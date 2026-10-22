@@ -83,7 +83,7 @@ struct TrayView: View {
     }
 }
 
-// MARK: - Panel
+// MARK: - Panel (Scrollable 2-Column Grid)
 
 final class PanelUIState: ObservableObject {
     @Published var login = SMAppService.mainApp.status == .enabled
@@ -94,27 +94,67 @@ struct PanelView: View {
     var onQuit: () -> Void
     @ObservedObject private var ui = PanelUIState()
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in
             VStack(spacing: 0) {
-                ForEach(Array(store.installed.enumerated()), id: \.element) { i, v in
-                    if i > 0 { Hairline() }
-                    VendorSection(vendor: v, snap: store.snaps[v], busy: store.busy.contains(v), onConfigure: {
-                        promptConfig(for: v)
-                    })
+                // Header info
+                headerBar
+
+                Hairline()
+
+                // Scrollable 2-column card grid
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 8) {
+                        LazyVGrid(columns: columns, spacing: 8) {
+                            ForEach(store.installed, id: \.self) { v in
+                                VendorCard(
+                                    vendor: v,
+                                    snap: store.snaps[v],
+                                    busy: store.busy.contains(v),
+                                    onConfigure: { promptConfig(for: v) }
+                                )
+                            }
+                        }
+
+                        let missing = Vendor.allCases.filter { !store.installed.contains($0) }
+                        if !missing.isEmpty {
+                            MissingRow(vendors: missing, onConfigure: { v in
+                                promptConfig(for: v)
+                            })
+                        }
+                    }
+                    .padding(8)
                 }
-                let missing = Vendor.allCases.filter { !store.installed.contains($0) }
-                if !missing.isEmpty {
-                    if !store.installed.isEmpty { Hairline() }
-                    MissingRow(vendors: missing, onConfigure: { v in
-                        promptConfig(for: v)
-                    })
-                }
+                .frame(maxHeight: 460)
+
+                // Fixed footer (always visible)
                 Hairline()
                 footer
             }
-            .frame(width: 336)
+            .frame(width: 550)
         }
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 6) {
+            Text("AI Subscriptions & Limits")
+                .font(.system(size: 12, weight: .semibold))
+            Text("(\(store.installed.count) active)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if !store.busy.isEmpty {
+                Text("Refreshing…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(EdgeInsets(top: 8, leading: 12, bottom: 7, trailing: 12))
     }
 
     private var footer: some View {
@@ -123,7 +163,7 @@ struct PanelView: View {
                 .disabled(!store.busy.isEmpty)
             Spacer()
             HStack(spacing: 6) {
-                Text("Launch at Login").font(.system(size: 12))
+                Text("Launch at Login").font(.system(size: 11.5))
                 Toggle("", isOn: Binding(get: { ui.login }, set: { on in
                     do {
                         if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
@@ -169,71 +209,105 @@ private struct FooterButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.system(size: 12)).padding(.horizontal, 8).padding(.vertical, 4)
+            Text(title).font(.system(size: 11.5)).padding(.horizontal, 8).padding(.vertical, 3.5)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
     }
 }
 
-private struct VendorSection: View {
+// MARK: - Vendor Card (Compact Card in 2-Column Grid)
+
+private struct VendorCard: View {
     let vendor: Vendor
     let snap: Snapshot?
     let busy: Bool
     var onConfigure: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
-                markView.frame(width: 18, height: 18)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text(vendor.name)
-                            .font(.system(size: 13, weight: .semibold))
-                            .tracking(-0.2)
-                        if vendor.appBundleId != nil && hasAppInstalled(vendor) {
-                            Button(action: { openApp(for: vendor) }) {
-                                Image(systemName: "arrow.up.forward.app")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Launch or focus \(vendor.name)")
+        VStack(alignment: .leading, spacing: 4) {
+            // Card Header
+            HStack(alignment: .center, spacing: 6) {
+                markView.frame(width: 15, height: 15)
+                HStack(spacing: 3) {
+                    Text(vendor.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(-0.1)
+                        .lineLimit(1)
+                    if vendor.appBundleId != nil && hasAppInstalled(vendor) {
+                        Button(action: { openApp(for: vendor) }) {
+                            Image(systemName: "arrow.up.forward.app")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
                         }
+                        .buttonStyle(.plain)
+                        .help("Launch or focus \(vendor.name)")
                     }
-                    Text(planLine).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 8)
-                Text(ageText).font(.system(size: 11)).foregroundStyle(.tertiary).padding(.top, 1)
+                Spacer(minLength: 4)
+                Text(ageText)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
             }
+
+            // Plan Subtitle
+            Text(planLine)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            // Limit Windows / Meters
             let windows = snap?.windows ?? []
             ForEach(Array(windows.enumerated()), id: \.offset) { i, w in
                 MeterRow(window: w, vendor: vendor,
-                         style: i == 0 ? .primary : (w.label == "5-hour" || w.label == "Week" ? .normal : .quiet))
-                    .padding(.top, 7)
+                         style: i == 0 ? .primary : .normal)
                     .opacity(isStale(snap) ? 0.48 : 1)
             }
+
+            // Status message / fallback
             if snap?.state == .signedOut {
-                Text("Signed out — \(vendor.loginHint)").font(.system(size: 12)).foregroundStyle(.secondary)
-                    .textSelection(.enabled).padding(.top, 7)
+                Text("Signed out")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
             } else if windows.isEmpty {
-                Text(busy ? "Reading…" : "—").font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 7)
+                Text(busy ? "Reading…" : "—")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
             }
+
+            // Footnotes (spend, requests, notes)
             ForEach(snap?.notes ?? [], id: \.self) { n in
-                Text(n).font(.system(size: 11)).foregroundStyle(.tertiary).padding(.top, 6)
+                Text(n)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
+
             if let e = snap?.error {
-                HStack(spacing: 4) {
-                    Text(e).font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack(spacing: 3) {
+                    Text(e)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     if vendor == .deepseek {
                         Button(action: { onConfigure?() }) {
-                            Text("Setup Key").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.deepseekBlue)
-                        }.buttonStyle(.plain)
+                            Text("Set Key")
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(Color.deepseekBlue)
+                        }
+                        .buttonStyle(.plain)
                     }
-                }.padding(.top, 6)
+                }
             }
         }
-        .padding(EdgeInsets(top: 8, leading: 12, bottom: 9, trailing: 12))
+        .padding(EdgeInsets(top: 7, leading: 9, bottom: 7, trailing: 9))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.primary.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        )
     }
 
     private func hasAppInstalled(_ v: Vendor) -> Bool {
@@ -249,11 +323,12 @@ private struct VendorSection: View {
 
     @ViewBuilder private var markView: some View {
         let img = Image(nsImage: Marks.image(vendor)).renderingMode(.template).resizable().interpolation(.high)
-            .frame(width: 16, height: 16)
+            .frame(width: 14, height: 14)
         switch vendor {
         case .claude: img.foregroundStyle(Color.claude)
         case .gemini: img.foregroundStyle(Color.geminiGradient)
         case .codex: img.foregroundStyle(Color.codexEmerald)
+        case .grok: img.foregroundStyle(Color.primary)
         case .cursor: img.foregroundStyle(Color.cursorCyan)
         case .copilot: img.foregroundStyle(Color.copilotPurple)
         case .deepseek: img.foregroundStyle(Color.deepseekBlue)
@@ -261,21 +336,19 @@ private struct VendorSection: View {
         case .reasonix: img.foregroundStyle(Color.reasonixPurple)
         case .muse: img.foregroundStyle(Color.museAmber)
         case .ollama: img.foregroundStyle(Color.primary)
-        default: img.foregroundStyle(Color.primary)
         }
     }
 
     private var planLine: String {
         let plan = snap?.plan ?? ""
-        return plan.isEmpty ? vendor.product : "\(vendor.product) · \(plan)"
+        return plan.isEmpty ? vendor.product : plan
     }
 
     private var ageText: String {
         if busy && snap?.measuredAt == nil { return "reading…" }
         guard let m = snap?.measuredAt else { return "" }
         let s = Int(Date().timeIntervalSince(m))
-        let t = s < 60 ? "just now" : s < 3600 ? "\(s / 60) min ago" : s < 86400 ? "\(s / 3600) h ago" : "\(s / 86400) d ago"
-        return "updated " + t
+        return s < 60 ? "now" : s < 3600 ? "\(s / 60)m ago" : s < 86400 ? "\(s / 3600)h ago" : "\(s / 86400)d ago"
     }
 }
 
@@ -285,26 +358,31 @@ private struct MissingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Available Providers").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            ForEach(vendors, id: \.self) { v in
-                HStack(spacing: 4) {
-                    Text("\(v.name): \(v.loginHint)")
-                        .font(.system(size: 11)).foregroundStyle(.tertiary)
-                    if v == .deepseek {
-                        Button(action: { onConfigure?(v) }) {
-                            Text("Set Key").font(.system(size: 10, weight: .semibold)).foregroundStyle(Color.deepseekBlue)
-                        }.buttonStyle(.plain)
+            Text("Other Providers")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(vendors, id: \.self) { v in
+                    HStack(spacing: 3) {
+                        Image(nsImage: Marks.image(v))
+                            .renderingMode(.template)
+                            .resizable()
+                            .frame(width: 11, height: 11)
+                            .foregroundStyle(.tertiary)
+                        Text(v.name)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 8, leading: 12, bottom: 9, trailing: 12))
+        .padding(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
     }
 }
 
 private struct MeterRow: View {
-    enum Style { case primary, normal, quiet }
+    enum Style { case primary, normal }
     let window: Window
     let vendor: Vendor
     let style: Style
@@ -312,34 +390,35 @@ private struct MeterRow: View {
     var body: some View {
         let due = window.resetPassed
         let hot = !due && (window.used ?? 0) >= 90
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(window.label).lineLimit(1).truncationMode(.tail)
-                    .font(.system(size: style == .quiet ? 11 : 12, weight: style == .primary ? .semibold : .regular))
-                    .foregroundStyle(style == .quiet ? .secondary : .primary)
-                Text(resetText(due)).font(.system(size: 11)).foregroundStyle(due ? .secondary : .tertiary)
-            }
-            .frame(width: 120, alignment: .leading)
-            if !due {
-                Track(fraction: (window.used ?? 0) / 100, height: style == .quiet ? 4 : 5, vendor: vendor, hot: hot)
-            } else {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 4) {
+                Text(window.label)
+                    .lineLimit(1)
+                    .font(.system(size: 10.5, weight: style == .primary ? .medium : .regular))
+                    .foregroundStyle(Color.primary.opacity(0.85))
                 Spacer()
+                Text(due || window.used == nil ? "—" : percentText(window.used) + "%")
+                    .font(.system(size: 10.5, weight: hot ? .bold : .semibold).monospacedDigit())
+                    .foregroundStyle(hot ? Color.hot : Color.primary)
             }
-            Text(due || window.used == nil ? "—" : percentText(window.used) + "%")
-                .font(.system(size: style == .quiet ? 12 : 13,
-                              weight: hot ? .bold : style == .primary ? .semibold : .medium).monospacedDigit())
-                .foregroundStyle(hot ? Color.hot : (style == .quiet || due ? Color.secondary : Color.primary))
-                .frame(width: 40, alignment: .trailing)
+            if !due {
+                Track(fraction: (window.used ?? 0) / 100, height: 3.5, vendor: vendor, hot: hot)
+            }
+            if let r = resetText(due), !r.isEmpty {
+                Text(r)
+                    .font(.system(size: 9))
+                    .foregroundStyle(due ? .secondary : .tertiary)
+                    .lineLimit(1)
+            }
         }
     }
 
-    private func resetText(_ due: Bool) -> String {
-        if due { return "reset — awaiting update" }
-        let kind = vendor == .gemini ? (window.short == "5h" ? "5-hour · " : "week · ") : ""
-        guard let r = window.resetsAt else { return kind.isEmpty ? "" : String(kind.dropLast(3)) }
+    private func resetText(_ due: Bool) -> String? {
+        if due { return "reset · awaiting update" }
+        guard let r = window.resetsAt else { return nil }
         let f = DateFormatter()
         f.dateFormat = Calendar.current.isDateInToday(r) ? "HH:mm" : "EEE HH:mm"
-        return kind + (vendor == .grok ? "ends " : "resets ") + f.string(from: r)
+        return "resets " + f.string(from: r)
     }
 }
 
@@ -352,7 +431,7 @@ private struct Track: View {
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.16))
+                Capsule().fill(Color.primary.opacity(0.12))
                 fill.frame(width: max(fraction > 0 ? height : 0, g.size.width * min(1, max(0, fraction))))
             }
         }
@@ -366,6 +445,7 @@ private struct Track: View {
             case .claude: Capsule().fill(Color.claude)
             case .gemini: Capsule().fill(Color.geminiGradient)
             case .codex: Capsule().fill(Color.codexEmerald)
+            case .grok: Capsule().fill(Color.primary)
             case .cursor: Capsule().fill(Color.cursorCyan)
             case .copilot: Capsule().fill(Color.copilotPurple)
             case .deepseek: Capsule().fill(Color.deepseekBlue)
@@ -373,7 +453,6 @@ private struct Track: View {
             case .reasonix: Capsule().fill(Color.reasonixPurple)
             case .muse: Capsule().fill(Color.museAmber)
             case .ollama: Capsule().fill(Color.primary)
-            default: Capsule().fill(Color.primary)
             }
         }
     }

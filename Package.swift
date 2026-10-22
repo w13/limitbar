@@ -10,7 +10,8 @@ let package = Package(
         .executableTarget(
             name: "LimitBar",
             path: "Sources/LimitBar",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-w"])]
         )
     ]
 )

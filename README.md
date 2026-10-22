@@ -5,6 +5,7 @@
 ### Real-Time Usage & Limit Tracker for AI Coding Agents & Desktop Apps
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue?logo=apple&style=flat-square)](https://apple.com)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&style=flat-square)](windows/README.md)
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&style=flat-square)](https://swift.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero-brightgreen?style=flat-square)](#security--privacy)
@@ -94,6 +95,21 @@ To completely uninstall:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/w13/limitbar/main/install.sh) --uninstall
 ```
+
+### Windows Edition (x86_64 & ARM64)
+
+LimitBar includes a native, standalone Windows Taskbar Notification Area application built in Go with pure Win32 system tray bindings.
+
+To build on Windows:
+```cmd
+cd windows
+build.bat
+```
+Or cross-compile from macOS/Linux:
+```bash
+cd windows && ./build.sh
+```
+See the [Windows README](windows/README.md) for complete details.
 
 ---
 

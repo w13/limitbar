@@ -12,3 +12,4 @@ SHA256SUMS
 *session*.json
 state.json
 claude-status.json
+*.exe

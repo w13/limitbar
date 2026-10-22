@@ -14,7 +14,7 @@ REPO="w13/limitbar"
 VERSION="1.1.0"
 # Pinned by this commit of install.sh: the release zip must match it byte for byte, and the source build
 # must check out exactly this commit.
-ZIP_SHA256="90602db824b0b26dc86a531f293b7a2e559dd6f92cd503c935055420aa80ab37"
+ZIP_SHA256="0426b0f6a7d67ecbbfe71f45a0219c228ac6c359305577774d8135138874aa78"
 SOURCE_COMMIT="40db32057998ff7f2b8c43d105ff2ef7fd14e35d"
 
 APP_DIR="$HOME/Applications"

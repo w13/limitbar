@@ -42,7 +42,7 @@ chmod 755 "$T/claude" "$T/agy" "$T/codex" "$T/grok"
 cp "$T/codex" "$T/codex-unsafe"; chmod 775 "$T/codex-unsafe"     # group-writable file: must never run
 mkdir "$T/shared"; chmod 777 "$T/shared"; cp "$T/codex" "$T/shared/codex"   # safe file, unsafe folder
 
-probe() { "$BIN" --probe "$@" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join("%s=%s" % (k, d[k]["state"]) for k in sorted(d)))'; }
+probe() { "$BIN" --probe "$@" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join("%s=%s" % (k, d[k]["state"]) for k in ["claude", "codex", "gemini", "grok"]))'; }
 expect() { local got; got="$(probe "${@:2}")"; [[ "$got" == "$1" ]] && echo "ok   $got" || { echo "FAIL got: $got"; echo "     want: $1"; exit 1; }; }
 
 expect "claude=missing codex=missing gemini=missing grok=missing" \

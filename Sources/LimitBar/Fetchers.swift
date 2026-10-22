@@ -31,6 +31,17 @@ enum Fetch {
             return (nil, .status(.cursor, .missing))
         }
         if v == .gemini {
+            if UserDefaults.standard.string(forKey: "agyPath") != nil {
+                switch CLI.find("agy") {
+                case .ok(let p):
+                    guard CLI.launch(p) != nil else {
+                        return (nil, .status(.gemini, .untrusted, "agy could be replaced by another account — not run"))
+                    }
+                    return (p, nil)
+                case .missing: return (nil, .status(.gemini, .missing))
+                case .untrusted: return (nil, .status(.gemini, .untrusted, "agy could be replaced by another account — not run"))
+                }
+            }
             if case .ok(let p) = CLI.find("agy") {
                 guard CLI.launch(p) != nil else {
                     return (nil, .status(.gemini, .untrusted, "agy could be replaced by another account — not run"))
@@ -44,6 +55,17 @@ enum Fetch {
             return (nil, .status(.gemini, .missing))
         }
         if v == .grok {
+            if UserDefaults.standard.string(forKey: "grokPath") != nil {
+                switch CLI.find("grok") {
+                case .ok(let p):
+                    guard CLI.launch(p) != nil else {
+                        return (nil, .status(.grok, .untrusted, "grok could be replaced by another account — not run"))
+                    }
+                    return (p, nil)
+                case .missing: return (nil, .status(.grok, .missing))
+                case .untrusted: return (nil, .status(.grok, .untrusted, "grok could be replaced by another account — not run"))
+                }
+            }
             let appSupport = "\(home)/Library/Application Support/Grok Bot"
             if FileManager.default.fileExists(atPath: appSupport) || FileManager.default.fileExists(atPath: "/Applications/Grok Bot.app") {
                 return (appSupport, nil)
@@ -106,6 +128,9 @@ enum Fetch {
     static let claudeFilePath = "\(Paths.cache)/claude-status.json"
 
     static func claudeFile() -> Snapshot? {
+        if UserDefaults.standard.string(forKey: "claudePath") != nil {
+            return nil
+        }
         if let d = try? Data(contentsOf: URL(fileURLWithPath: claudeFilePath)),
            let o = json(d), let limits = o["limits"] as? [String: Any] {
             func win(_ k: String, _ label: String, _ short: String) -> Window? {
@@ -236,14 +261,16 @@ enum Fetch {
     }
 
     static func gemini() -> Snapshot {
-        if let appSnap = antigravityApp() {
+        if UserDefaults.standard.string(forKey: "agyPath") == nil, let appSnap = antigravityApp() {
             return appSnap
         }
         let (b, why) = binary(.gemini)
         guard let bin = b, !bin.contains(".vscdb") else {
-            let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
-            if FileManager.default.fileExists(atPath: dbPath) || FileManager.default.fileExists(atPath: "/Applications/Antigravity.app") {
-                return .status(.gemini, .signedOut)
+            if UserDefaults.standard.string(forKey: "agyPath") == nil {
+                let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+                if FileManager.default.fileExists(atPath: dbPath) || FileManager.default.fileExists(atPath: "/Applications/Antigravity.app") {
+                    return .status(.gemini, .signedOut)
+                }
             }
             return why ?? .status(.gemini, .missing)
         }
@@ -376,7 +403,7 @@ enum Fetch {
     }
 
     static func grok() -> Snapshot {
-        if let bot = grokBot() {
+        if UserDefaults.standard.string(forKey: "grokPath") == nil, let bot = grokBot() {
             return bot
         }
         let (b, why) = binary(.grok)

@@ -138,10 +138,18 @@ private func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeM
 enum CLI {
     static let home = FileManager.default.homeDirectoryForCurrentUser.path
 
-    /// Where the vendor CLIs install themselves. Fixed: PATH is never taken from the environment, so a
-    /// directory added by some other tool is never searched.
-    static let searchPath = ["\(home)/.local/bin", "\(home)/.grok/bin", "/opt/homebrew/bin", "/usr/local/bin",
-                             "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin"]
+    /// Where the vendor CLIs install themselves. Fixed + NVM paths.
+    static var searchPath: [String] {
+        var paths = ["\(home)/.local/bin", "\(home)/.grok/bin", "/opt/homebrew/bin", "/usr/local/bin",
+                     "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin"]
+        let nvmDir = "\(home)/.nvm/versions/node"
+        if let vers = try? FileManager.default.contentsOfDirectory(atPath: nvmDir) {
+            for v in vers.sorted().reversed() {
+                paths.append("\(nvmDir)/\(v)/bin")
+            }
+        }
+        return paths
+    }
     static let systemPath = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 
     /// A private, empty working directory: no CLI ever runs inside a project and picks up its config.
@@ -160,6 +168,28 @@ enum CLI {
         if let p = UserDefaults.standard.string(forKey: "\(name)Path"), p.hasPrefix("/") {
             guard FileManager.default.fileExists(atPath: p) else { return .missing }
             return trusted(p) ? .ok(p) : .untrusted(p)
+        }
+        if name == "codex" {
+            let bundled = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+            if FileManager.default.isExecutableFile(atPath: bundled) {
+                return trusted(bundled) ? .ok(bundled) : .untrusted(bundled)
+            }
+        }
+        if name == "claude" {
+            let base = "\(home)/Library/Application Support/Claude/claude-code"
+            if let versions = try? FileManager.default.contentsOfDirectory(atPath: base) {
+                for v in versions.sorted().reversed() {
+                    let vDir = "\(base)/\(v)"
+                    if let hashes = try? FileManager.default.contentsOfDirectory(atPath: vDir) {
+                        for h in hashes {
+                            let bin = "\(vDir)/\(h)/claude.app/Contents/MacOS/claude"
+                            if FileManager.default.isExecutableFile(atPath: bin) {
+                                return trusted(bin) ? .ok(bin) : .untrusted(bin)
+                            }
+                        }
+                    }
+                }
+            }
         }
         for dir in searchPath {
             let p = "\(dir)/\(name)"

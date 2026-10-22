@@ -22,6 +22,10 @@ if args.contains("--probe") {
         case .gemini: all[v.rawValue] = Fetch.gemini()
         case .codex: all[v.rawValue] = Fetch.codexFromServer()
         case .grok: all[v.rawValue] = Fetch.grok()
+        case .cursor: all[v.rawValue] = Fetch.cursor()
+        case .copilot: all[v.rawValue] = Fetch.copilot()
+        case .deepseek: all[v.rawValue] = Fetch.deepseek()
+        case .ollama: all[v.rawValue] = Fetch.ollama()
         }
     }
     print(String(decoding: (try? enc.encode(all)) ?? Data(), as: UTF8.self))

@@ -10,8 +10,8 @@
 # Gatekeeper/quarantine overrides, no telemetry, no installing or signing in to any AI CLI.
 set -euo pipefail
 
-REPO="dancik/limitbar"
-VERSION="1.0.2"
+REPO="w13/limitbar"
+VERSION="1.1.0"
 # Pinned by this commit of install.sh: the release zip must match it byte for byte, and the source build
 # must check out exactly this commit.
 ZIP_SHA256="90602db824b0b26dc86a531f293b7a2e559dd6f92cd503c935055420aa80ab37"

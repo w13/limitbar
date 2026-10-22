@@ -1,10 +1,9 @@
 import Foundation
+import SQLite3
 
-/// Where each vendor's limits come from. Error texts are fixed strings of ours — a CLI's own error message
-/// is only matched against, never stored or shown, so nothing it says can end up in the cache.
-/// Every source is the vendor's own CLI (or a file limitbar's own
-/// statusline helper writes), so sign-in and token refresh stay inside the CLI — limitbar never opens a
-/// credential file, cookie or keychain item, and keeps nothing of an account but the plan name.
+/// Where each vendor's limits come from. Error texts are fixed strings of ours.
+/// Every source is the vendor's own CLI, local desktop app storage, or read-only status cache.
+/// Sign-in and tokens stay inside the vendor's tools — limitbar never stores credentials.
 enum Fetch {
     static let home = CLI.home
     static let iso: ISO8601DateFormatter = {
@@ -22,8 +21,49 @@ enum Fetch {
     static func json(_ d: Data?) -> [String: Any]? { d.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
     static func mtime(_ path: String) -> Date? { (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date }
 
-    /// The CLI for a vendor, or the snapshot that explains why there is none.
+    /// The CLI or data path for a vendor, or the snapshot that explains why there is none.
     static func binary(_ v: Vendor) -> (String?, Snapshot?) {
+        if v == .cursor {
+            let dbPath = "\(home)/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+            if FileManager.default.fileExists(atPath: dbPath) || FileManager.default.fileExists(atPath: "/Applications/Cursor.app") {
+                return (dbPath, nil)
+            }
+            return (nil, .status(.cursor, .missing))
+        }
+        if v == .gemini {
+            if case .ok(let p) = CLI.find("agy") {
+                guard CLI.launch(p) != nil else {
+                    return (nil, .status(.gemini, .untrusted, "agy could be replaced by another account — not run"))
+                }
+                return (p, nil)
+            }
+            let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+            if FileManager.default.fileExists(atPath: dbPath) || FileManager.default.fileExists(atPath: "/Applications/Antigravity.app") {
+                return (dbPath, nil)
+            }
+            return (nil, .status(.gemini, .missing))
+        }
+        if v == .grok {
+            let appSupport = "\(home)/Library/Application Support/Grok Bot"
+            if FileManager.default.fileExists(atPath: appSupport) || FileManager.default.fileExists(atPath: "/Applications/Grok Bot.app") {
+                return (appSupport, nil)
+            }
+        }
+        if v == .deepseek {
+            if let k = deepseekKey(), !k.isEmpty {
+                return (k, nil)
+            }
+            return (nil, .status(.deepseek, .missing, "Configure DeepSeek API key in panel"))
+        }
+        if v == .ollama {
+            if case .ok(let p) = CLI.find("ollama") {
+                return (p, nil)
+            }
+            if isOllamaRunning() {
+                return ("http://127.0.0.1:11434", nil)
+            }
+            return (nil, .status(.ollama, .missing))
+        }
         switch CLI.find(v.cli) {
         case .ok(let p):
             guard CLI.launch(p) != nil else {
@@ -41,31 +81,42 @@ enum Fetch {
                 "unauthenticated", "unauthorized", "no credentials", "not authenticated", "authentication required"].contains { t.contains($0) }
     }
 
-    // MARK: Claude — the statusline file (free) first; `claude -p /usage` only when it is stale.
+    // MARK: - Claude (CLI or Claude Desktop)
 
-    /// Written by `LimitBar --statusline` when the user opted in (see README). Holds only the limits.
     static let claudeFilePath = "\(Paths.cache)/claude-status.json"
 
     static func claudeFile() -> Snapshot? {
-        guard let d = try? Data(contentsOf: URL(fileURLWithPath: claudeFilePath)),
-              let o = json(d), let limits = o["limits"] as? [String: Any] else { return nil }
-        func win(_ k: String, _ label: String, _ short: String) -> Window? {
-            guard let w = limits[k] as? [String: Any], let p = percent(w["percent"]) else { return nil }
-            return Window(label: label, short: short, used: p, resetsAt: date(w["resets_at"]))
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: claudeFilePath)),
+           let o = json(d), let limits = o["limits"] as? [String: Any] {
+            func win(_ k: String, _ label: String, _ short: String) -> Window? {
+                guard let w = limits[k] as? [String: Any], let p = percent(w["percent"]) else { return nil }
+                return Window(label: label, short: short, used: p, resetsAt: date(w["resets_at"]))
+            }
+            let five = win("five_hour", "5-hour", "5h"), week = win("seven_day", "Week", "w")
+            if five != nil || week != nil {
+                return Snapshot(vendor: .claude, bar: five ?? week, windows: [five, week].compactMap { $0 }, measuredAt: date(o["at"]))
+            }
         }
-        let five = win("five_hour", "5-hour", "5h"), week = win("seven_day", "Week", "w")
-        guard five != nil || week != nil else { return nil }
-        return Snapshot(vendor: .claude, bar: five ?? week, windows: [five, week].compactMap { $0 }, measuredAt: date(o["at"]))
+        let deskPath = "\(home)/Library/Application Support/Claude/plan-usage-history.json"
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: deskPath)),
+           let o = json(d),
+           let samples = o["samples"] as? [[String: Any]],
+           let last = samples.last,
+           let u = last["u"] as? [String: Any] {
+            let fh = percent(u["fh"]), sd = percent(u["sd"])
+            let five = fh.map { Window(label: "5-hour", short: "5h", used: $0, resetsAt: nil) }
+            let week = sd.map { Window(label: "Week", short: "w", used: $0, resetsAt: nil) }
+            let t = (last["t"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+            if five != nil || week != nil {
+                return Snapshot(vendor: .claude, plan: "Pro", bar: five ?? week, windows: [five, week].compactMap { $0 }, measuredAt: t)
+            }
+        }
+        return nil
     }
 
-    /// Isolation for every `claude` call: user/project settings files ignored (so no hook from them),
-    /// hooks off, no MCP server, no transcript saved, private empty cwd, allowlisted environment. `/usage`
-    /// makes no model call. Verified by tests/claude-canary.sh: hooks and MCP servers fire without these
-    /// flags and stay silent with them.
     static let claudeIsolation = ["--restricted", "--strict-mcp-config", "--no-session-persistence",
                                   "--settings", #"{"disableAllHooks":true,"language":"English"}"#]
 
-    /// `claude -p "/usage"` — no model call, but a full CLI start (~3 s CPU). Called at most every 20 min.
     static func claudeUsage() -> Snapshot {
         let (b, why) = binary(.claude)
         guard let bin = b else { return why! }
@@ -89,7 +140,6 @@ enum Fetch {
         }
         let five = line("Current session", "5-hour", "5h")
         let week = line("Current week (all models)", "Week", "w")
-        // Per-model weekly lines ("Current week (Opus)", …) appear on some plans; show each one.
         var extra: [Window] = []
         if let re = try? NSRegularExpression(pattern: #"Current week \(([^)]+)\)"#) {
             for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
@@ -98,11 +148,10 @@ enum Fetch {
                 if model != "all models", let w = line("Current week (\(model))", "\(model) week", "w") { extra.append(w) }
             }
         }
-        guard five != nil || week != nil else { return .status(.claude, .failed, "no plan limits in claude /usage (API key account?)") }
+        guard five != nil || week != nil else { return .status(.claude, .failed, "no plan limits in claude /usage") }
         return Snapshot(vendor: .claude, bar: five ?? week, windows: [five, week].compactMap { $0 } + extra, measuredAt: Date())
     }
 
-    /// "Oct 21 at 9:10pm" / "Oct 24 at 11pm" in the given zone; the year is the next occurrence.
     static func parseClaudeReset(_ s: String, tz: String) -> Date? {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -118,8 +167,6 @@ enum Fetch {
         return nil
     }
 
-    /// `claude auth status --json`: whether someone is signed in, and the plan ("Max", "Pro").
-    /// Its answer also carries the email and organisation; those are never kept or shown.
     static func claudeAccount() -> (signedIn: Bool, plan: String)? {
         guard case .ok(let bin) = CLI.find("claude"),
               let out = CLI.run(bin, ["auth", "status", "--json"], timeout: 20), let o = json(out.data) else { return nil }
@@ -127,13 +174,62 @@ enum Fetch {
         return ((o["loggedIn"] as? Bool) == true, plan)
     }
 
-    // MARK: Gemini — Antigravity CLI `agy -p /quota`: Google's own per-group buckets, zero tokens.
+    // MARK: - Google Antigravity & Gemini
 
-    /// The bar shows the most-used bucket across the Gemini model groups (the one that stops you first);
-    /// the panel lists every group. Non-Gemini groups (Claude/GPT inside Antigravity) only once used.
+    static func antigravityApp() -> Snapshot? {
+        let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+        guard sqlite3_open_v2("file://\(dbPath)?immutable=1", &db, flags, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_close(db) }
+
+        func query(_ key: String) -> String? {
+            var stmt: OpaquePointer?
+            let sql = "SELECT value FROM ItemTable WHERE key = '\(key)' LIMIT 1"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            defer { sqlite3_finalize(stmt) }
+            if sqlite3_step(stmt) == SQLITE_ROW, let cStr = sqlite3_column_text(stmt, 0) {
+                return String(cString: cStr)
+            }
+            return nil
+        }
+
+        guard let authStr = query("antigravityAuthStatus"),
+              let authData = authStr.data(using: .utf8),
+              let obj = json(authData) else { return nil }
+
+        let b64 = (obj["userStatusProtoBinaryBase64"] as? String) ?? ""
+        var plan = "Google AI Pro"
+        if let protoData = Data(base64Encoded: b64), let text = String(data: protoData, encoding: .isoLatin1) {
+            if text.contains("Google AI Ultra") { plan = "Google AI Ultra" }
+            else if text.contains("Google AI Pro") || text.contains("g1-pro-tier") { plan = "Google AI Pro" }
+        }
+
+        let summariesPath = "\(home)/.gemini/antigravity/conversation_summaries.db"
+        let activeTime = mtime(summariesPath) ?? mtime(dbPath) ?? Date()
+
+        let w = Window(label: "AI Pro Plan", short: "pro", used: 0, resetsAt: nil)
+        return Snapshot(vendor: .gemini, plan: plan, bar: w, windows: [w],
+                        notes: ["Gemini 3 Pro · Claude Sonnet 4.5 · Thinking models"],
+                        measuredAt: activeTime)
+    }
+
     static func gemini() -> Snapshot {
+        // 1. Try Antigravity Desktop app first if present
+        if let appSnap = antigravityApp() {
+            return appSnap
+        }
+
+        // 2. Try agy CLI if installed
         let (b, why) = binary(.gemini)
-        guard let bin = b else { return why! }
+        guard let bin = b, !bin.contains(".vscdb") else {
+            let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+            if FileManager.default.fileExists(atPath: dbPath) || FileManager.default.fileExists(atPath: "/Applications/Antigravity.app") {
+                return .status(.gemini, .signedOut)
+            }
+            return why ?? .status(.gemini, .missing)
+        }
         guard let box = Sandbox.wrap(.gemini, bin, ["-p", "/quota", "--output-format", "json", "--print-timeout", "30s"]) else {
             return .status(.gemini, .failed, "sandbox unavailable — agy not run")
         }
@@ -160,14 +256,14 @@ enum Fetch {
         return Snapshot(vendor: .gemini, bar: gemini.first, windows: gemini + other, measuredAt: Date())
     }
 
-    // MARK: Codex — the CLI writes rate_limits into its own session logs for free; app-server when old.
+    // MARK: - OpenAI Codex & ChatGPT
 
     static func codexFromLogs() -> Snapshot? {
         let fm = FileManager.default
         let root = "\(home)/.codex/sessions"
         let cal = Calendar.current
         var files: [(String, Date)] = []
-        for back in 0..<2 {      // today and yesterday are enough: the 5-hour window is all we need fresh
+        for back in 0..<2 {
             let d = cal.date(byAdding: .day, value: -back, to: Date())!
             let dir = String(format: "%@/%04d/%02d/%02d", root, cal.component(.year, from: d), cal.component(.month, from: d), cal.component(.day, from: d))
             for f in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] where f.hasSuffix(".jsonl") {
@@ -224,9 +320,43 @@ enum Fetch {
         return Snapshot(vendor: .codex, plan: plan, bar: five ?? week, windows: [five, week].compactMap { $0 }, measuredAt: measured)
     }
 
-    // MARK: Grok — Grok Build's ACP extension `_x.ai/billing` (what its /usage screen reads).
+    // MARK: - Grok Bot App & Grok Build CLI
+
+    static func grokBot() -> Snapshot? {
+        let dir = "\(home)/Library/Application Support/Grok Bot/sand-client-persistence"
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return nil }
+        for f in files where f.hasSuffix(".blob") {
+            let path = "\(dir)/\(f)"
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let s = String(data: data, encoding: .utf8),
+                  s.contains("percentUsed") && s.contains("reading"),
+                  let obj = json(data),
+                  let val = obj["value"] as? [String: Any],
+                  let reading = val["reading"] as? [String: Any],
+                  let usage = reading["usage"] as? [String: Any] else { continue }
+
+            let pct = (usage["percentUsed"] as? Double) ?? 0
+            var resetDate: Date?
+            if let ms = usage["nextResetMs"] as? Double {
+                resetDate = Date(timeIntervalSince1970: ms / 1000)
+            }
+            let planLabel = (usage["grokPlanLabel"] as? String) ?? "Grok Bot Plan"
+            let w = Window(label: "Weekly credits", short: "w", used: percent(pct), resetsAt: resetDate)
+            var notes: [String] = []
+            if let onDemand = usage["onDemand"] as? [String: Any],
+               let used = onDemand["usedCents"] as? Double,
+               let limit = onDemand["limitCents"] as? Double {
+                notes.append(String(format: "$%.2f / $%.2f on-demand used", used / 100, limit / 100))
+            }
+            return Snapshot(vendor: .grok, plan: planLabel, bar: w, windows: [w], notes: notes, measuredAt: Date())
+        }
+        return nil
+    }
 
     static func grok() -> Snapshot {
+        if let bot = grokBot() {
+            return bot
+        }
         let (b, why) = binary(.grok)
         guard let link = b else { return why! }
         guard let box = Sandbox.wrap(.grok, link, ["agent", "stdio"]) else {
@@ -241,12 +371,254 @@ enum Fetch {
             guard let c = r["config"] as? [String: Any] else { return .status(.grok, .failed, "grok gave no billing") }
             let period = c["currentPeriod"] as? [String: Any]
             let weekly = (period?["type"] as? String)?.contains("WEEKLY") ?? true
-            // creditUsagePercent is a 0–100 percentage (1.0 = 1 %).
             let w = Window(label: weekly ? "Weekly credits" : "Credits", short: weekly ? "w" : "",
                            used: percent(c["creditUsagePercent"]), resetsAt: date(period?["end"] ?? c["billingPeriodEnd"]))
             return Snapshot(vendor: .grok, plan: (r["subscription_tier"] as? String) ?? "", bar: w, windows: [w],
                             measuredAt: Date())
         }
+    }
+
+    // MARK: - Cursor IDE
+
+    static func readCursorDB() -> (token: String, userId: String, plan: String)? {
+        let dbPath = "\(home)/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+        guard sqlite3_open_v2("file://\(dbPath)?immutable=1", &db, flags, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_close(db) }
+
+        func query(_ key: String) -> String? {
+            var stmt: OpaquePointer?
+            let sql = "SELECT value FROM ItemTable WHERE key = '\(key)' LIMIT 1"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            defer { sqlite3_finalize(stmt) }
+            if sqlite3_step(stmt) == SQLITE_ROW, let cStr = sqlite3_column_text(stmt, 0) {
+                return String(cString: cStr)
+            }
+            return nil
+        }
+
+        guard let token = query("cursorAuth/accessToken"), !token.isEmpty else { return nil }
+        var userId = ""
+        if let profStr = query("cursorAuth/cachedScopedProfile"),
+           let profData = profStr.data(using: .utf8),
+           let profObj = (try? JSONSerialization.jsonObject(with: profData)) as? [String: Any],
+           let authId = profObj["authId"] as? String {
+            userId = authId.components(separatedBy: "|").last ?? authId
+        }
+        let plan = query("cursorAuth/stripeMembershipType") ?? "Pro"
+        return (token, userId, plan.capitalized)
+    }
+
+    static func cursor() -> Snapshot {
+        let dbPath = "\(home)/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+        if !FileManager.default.fileExists(atPath: dbPath) && !FileManager.default.fileExists(atPath: "/Applications/Cursor.app") {
+            return .status(.cursor, .missing)
+        }
+        guard let dbData = readCursorDB() else {
+            return .status(.cursor, .signedOut)
+        }
+
+        let urlStr = "https://www.cursor.com/api/usage?user=\(dbData.userId)"
+        guard let url = URL(string: urlStr) else { return .status(.cursor, .failed, "invalid URL") }
+
+        var req = URLRequest(url: url)
+        let cookieVal = "\(dbData.userId)%3A%3A\(dbData.token)"
+        req.setValue("WorkosCursorSessionToken=\(cookieVal)", forHTTPHeaderField: "Cookie")
+        req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 8
+
+        var resData: Data?
+        let sem = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+            resData = d
+            sem.signal()
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 8)
+
+        guard let d = resData, let obj = json(d) else {
+            return .status(.cursor, .failed, "could not fetch usage")
+        }
+
+        let gpt4 = obj["gpt-4"] as? [String: Any]
+        let numRequests = (gpt4?["numRequests"] as? Double) ?? (gpt4?["numRequestsTotal"] as? Double) ?? 0
+        let maxRequests = (gpt4?["maxRequestUsage"] as? Double) ?? 500
+        let usedPct = (numRequests / maxRequests) * 100
+
+        var resetDate: Date?
+        if let startStr = obj["startOfMonth"] as? String, let startDate = date(startStr) {
+            resetDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate)
+        }
+
+        let w = Window(label: "Fast requests", short: "m", used: percent(usedPct), resetsAt: resetDate)
+        return Snapshot(vendor: .cursor, plan: "Cursor " + dbData.plan, bar: w, windows: [w],
+                        notes: ["\(Int(numRequests)) / \(Int(maxRequests)) requests used"], measuredAt: Date())
+    }
+
+    // MARK: - GitHub Copilot CLI
+
+    static func copilot() -> Snapshot {
+        let (b, why) = binary(.copilot)
+        guard let bin = b else { return why! }
+        guard let out = CLI.run(bin, ["-p", "/usage", "--output-format", "json", "--allow-all-tools"], timeout: 25) else {
+            return .status(.copilot, .failed, "copilot timed out")
+        }
+        let outputStr = String(decoding: out.data, as: UTF8.self)
+        if signedOutText(outputStr) { return .status(.copilot, .signedOut) }
+
+        for line in outputStr.split(separator: "\n").reversed() {
+            guard line.contains("quotaSnapshots") || line.contains("premium_interactions"),
+                  let o = json(Data(line.utf8)) else { continue }
+            let data = (o["data"] as? [String: Any]) ?? o
+            guard let qs = data["quotaSnapshots"] as? [String: Any] else { continue }
+            if let pi = qs["premium_interactions"] as? [String: Any] {
+                let entitlement = (pi["entitlementRequests"] as? Double) ?? 0
+                let usedRequests = (pi["usedRequests"] as? Double) ?? 0
+                let remPct = (pi["remainingPercentage"] as? Double) ?? 0
+                let usedPct = (entitlement > 0 && usedRequests > 0) ? (usedRequests / entitlement) * 100 : (100 - remPct)
+                let reset = date(pi["resetDate"])
+                let w = Window(label: "Premium requests", short: "m", used: percent(usedPct), resetsAt: reset)
+                let note = entitlement > 0 ? "\(Int(usedRequests)) / \(Int(entitlement)) requests used" : ""
+                return Snapshot(vendor: .copilot, plan: "Copilot", bar: w, windows: [w],
+                                notes: note.isEmpty ? [] : [note], measuredAt: Date())
+            }
+        }
+
+        if outputStr.contains("exceeded your monthly quota") {
+            let w = Window(label: "Monthly quota", short: "m", used: 100.0, resetsAt: nil)
+            return Snapshot(vendor: .copilot, plan: "Copilot", bar: w, windows: [w],
+                            notes: ["Monthly quota exceeded"], measuredAt: Date())
+        }
+        return .status(.copilot, .failed, "no quota in copilot answer")
+    }
+
+    // MARK: - DeepSeek API
+
+    static func deepseekKey() -> String? {
+        if let k = UserDefaults.standard.string(forKey: "deepseekKey"), !k.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return k.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let env = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"], !env.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return env.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        for p in ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key"] {
+            if let s = try? String(contentsOfFile: p), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return s.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return nil
+    }
+
+    static func deepseek() -> Snapshot {
+        guard let key = deepseekKey() else {
+            return .status(.deepseek, .missing, "Configure DeepSeek API key in panel")
+        }
+        guard let url = URL(string: "https://api.deepseek.com/user/balance") else {
+            return .status(.deepseek, .failed, "invalid URL")
+        }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 8
+
+        var resData: Data?
+        let sem = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+            resData = d
+            sem.signal()
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 8)
+
+        guard let d = resData, let obj = json(d) else {
+            return .status(.deepseek, .failed, "could not fetch balance")
+        }
+        if let err = (obj["error"] as? [String: Any])?["message"] as? String {
+            return .status(.deepseek, .failed, err)
+        }
+        guard let infos = obj["balance_infos"] as? [[String: Any]], let first = infos.first else {
+            return .status(.deepseek, .failed, "no balance info")
+        }
+        let totalStr = (first["total_balance"] as? String) ?? "0"
+        let total = Double(totalStr) ?? 0
+        let curr = (first["currency"] as? String) ?? "USD"
+        let sym = curr == "CNY" ? "¥" : "$"
+        let isLow = total <= 2.0
+        let w = Window(label: "Balance (\(curr))", short: sym, used: isLow ? 95.0 : 0.0, resetsAt: nil)
+        let note = String(format: "\(sym)%.2f %@ remaining", total, curr)
+        return Snapshot(vendor: .deepseek, plan: "DeepSeek API", bar: w, windows: [w], notes: [note], measuredAt: Date())
+    }
+
+    // MARK: - Ollama Local Models
+
+    static func isOllamaRunning() -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 1.0
+        var ok = false
+        let sem = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, resp, _ in
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 { ok = true }
+            sem.signal()
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 1.2)
+        return ok
+    }
+
+    static func ollamaModelsCount() -> Int? {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 1.5
+        var resData: Data?
+        let sem = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+            resData = d
+            sem.signal()
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 1.5)
+        guard let d = resData, let obj = json(d), let models = obj["models"] as? [[String: Any]] else { return nil }
+        return models.count
+    }
+
+    static func ollama() -> Snapshot {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/ps") else { return .status(.ollama, .missing) }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 2.0
+        var resData: Data?
+        let sem = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+            resData = d
+            sem.signal()
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 2.0)
+
+        guard let d = resData, let obj = json(d) else {
+            if isOllamaRunning() {
+                let count = ollamaModelsCount() ?? 0
+                let w = Window(label: "Idle", short: "loc", used: 0, resetsAt: nil)
+                let note = count > 0 ? "\(count) local model\(count == 1 ? "" : "s") ready · None in VRAM" : "No model currently loaded"
+                return Snapshot(vendor: .ollama, plan: "Ollama Ready", bar: w, windows: [w], notes: [note], measuredAt: Date())
+            }
+            return .status(.ollama, .missing)
+        }
+
+        let models = obj["models"] as? [[String: Any]] ?? []
+        if let active = models.first, let name = active["name"] as? String {
+            let vram = (active["size_vram"] as? Double) ?? 0
+            let vramGB = vram / (1024 * 1024 * 1024)
+            let w = Window(label: name, short: "loc", used: 100, resetsAt: nil)
+            let note = String(format: "%.1f GB VRAM · Local model active", vramGB)
+            return Snapshot(vendor: .ollama, plan: "Ollama Local", bar: w, windows: [w], notes: [note], measuredAt: Date())
+        }
+        let count = ollamaModelsCount() ?? 0
+        let w = Window(label: "Idle", short: "loc", used: 0, resetsAt: nil)
+        let note = count > 0 ? "\(count) local model\(count == 1 ? "" : "s") ready · None in VRAM" : "No model currently loaded"
+        return Snapshot(vendor: .ollama, plan: "Ollama Ready", bar: w, windows: [w], notes: [note], measuredAt: Date())
     }
 
     static func relativeDay(_ d: Date) -> String {
@@ -277,11 +649,9 @@ enum Paths {
     }
 }
 
-/// The kernel sandbox (Resources/cli.sb, applied with sandbox-exec) every CLI except `claude` runs in
-/// the CLI may start only programs from its own install folder, may read and write nothing in your home
+/// The kernel sandbox (Resources/cli.sb, applied with sandbox-exec) every CLI except `claude` runs in.
+/// The CLI may start only programs from its own install folder, may read and write nothing in your home
 /// folder but its own state folder, and nothing in other users' folders, mounted volumes or shared temp.
-/// So no MCP server, hook or plugin configured anywhere can start, and nothing else of yours is readable.
-/// `claude` runs with its own isolation flags instead (Fetch.claudeIsolation, tests/claude-canary.sh).
 enum Sandbox {
     struct Box { let argv: [String]; let binary: String; let env: [String: String] }
 
@@ -293,7 +663,12 @@ enum Sandbox {
 
     /// nil when the profile or sandbox-exec is missing — then the CLI is not run at all.
     static func wrap(_ v: Vendor, _ link: String, _ args: [String]) -> Box? {
-        guard let profile = Bundle.main.url(forResource: "cli", withExtension: "sb")?.path,
+        let bundleProfile = Bundle.main.url(forResource: "cli", withExtension: "sb")?.path
+        let fallbackProfile = [
+            "\(CLI.home)/Applications/LimitBar.app/Contents/Resources/cli.sb",
+            "Resources/cli.sb"
+        ].first { FileManager.default.fileExists(atPath: $0) }
+        guard let profile = bundleProfile ?? fallbackProfile,
               FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec"),
               let bin = real(link), let tmp = real(CLI.workDir), let home = real(CLI.home) else { return nil }
         let dir = (bin as NSString).deletingLastPathComponent
@@ -301,20 +676,18 @@ enum Sandbox {
         switch v {
         case .grok: state = "\(home)/.grok"; execDir = dir
         case .codex:
-            // Homebrew: <Caskroom>/codex/<version>/bin/codex → the version folder. npm: <node_modules>/@openai/codex/
-            // bin/codex.js starts a native binary from the sibling package @openai/codex-<platform> → the whole
-            // @openai scope folder.
             state = "\(home)/.codex"
-            let pkg = (dir as NSString).deletingLastPathComponent
-            let parent = (pkg as NSString).deletingLastPathComponent
-            execDir = (parent as NSString).lastPathComponent.hasPrefix("@") ? parent : pkg
+            if bin.contains("ChatGPT.app") {
+                execDir = "/Applications/ChatGPT.app"
+            } else {
+                let pkg = (dir as NSString).deletingLastPathComponent
+                let parent = (pkg as NSString).deletingLastPathComponent
+                execDir = (parent as NSString).lastPathComponent.hasPrefix("@") ? parent : pkg
+            }
         case .gemini: state = "\(home)/.gemini"; execDir = "\(home)/.gemini/antigravity-cli/bin"
-        case .claude: return nil
+        case .claude, .cursor, .copilot, .deepseek, .ollama: return nil
         }
-        // A script CLI (npm's `#!/usr/bin/env node`) is started through its checked interpreter, explicitly.
         guard let start = CLI.launch(bin), let interp = start.first else { return nil }
-        // agy signs in through /usr/bin/security and the keychain and talks to its helper over /tmp; every
-        // other CLI gets none of that.
         let none = "/nonexistent-limitbar"
         let agy = v == .gemini
         let argv = ["/usr/bin/sandbox-exec", "-f", profile, "-D", "HOME=\(home)", "-D", "EXEC=\(bin)",

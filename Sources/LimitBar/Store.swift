@@ -3,12 +3,9 @@ import Combine
 import Foundation
 
 /// Keeps one Snapshot per vendor fresh at the lowest cost:
-/// - one CLI at a time on a serial queue, hard 20–40 s deadlines, whole process group killed;
-/// - a source is re-polled only when its own activity files moved since the last poll (or its reset time
-///   passed), plus a slow safety interval; hovering refreshes anything older than 90 s;
-/// - Claude reads the opt-in statusline file for free and runs `claude -p /usage` at most every 20 min
-///   when that file is missing or stale;
-/// - paused while the Mac sleeps, refreshed on wake; last good values cached on disk, never shown as 0.
+/// - serial queue for fetches with strict deadlines;
+/// - a source is re-polled only when its own activity files moved (or its reset time passed);
+/// - caches results locally; graceful fallback to last known values on transient failures.
 final class Store: ObservableObject {
     @Published private(set) var snaps: [Vendor: Snapshot] = [:]
     @Published private(set) var busy: Set<Vendor> = []
@@ -26,14 +23,20 @@ final class Store: ObservableObject {
     private var cacheFile: String { "\(Paths.cache)/state.json" }
     private let home = CLI.home
 
-    /// Slow safety net per source even when nothing moved (another machine may spend the same quota).
-    private let idleInterval: [Vendor: TimeInterval] = [.claude: 20 * 60, .gemini: 30 * 60, .codex: 30 * 60, .grok: 30 * 60]
+    /// Slow safety net per source even when nothing moved.
+    private let idleInterval: [Vendor: TimeInterval] = [
+        .claude: 20 * 60, .gemini: 15 * 60, .codex: 30 * 60, .grok: 30 * 60,
+        .cursor: 15 * 60, .copilot: 15 * 60, .deepseek: 15 * 60, .ollama: 30
+    ]
     /// Minimum gap between polls when activity moved.
-    private let busyInterval: [Vendor: TimeInterval] = [.claude: 60, .gemini: 5 * 60, .codex: 60, .grok: 5 * 60]
-    /// A missing CLI is looked for again this often (it may have just been installed).
+    private let busyInterval: [Vendor: TimeInterval] = [
+        .claude: 60, .gemini: 60, .codex: 60, .grok: 5 * 60,
+        .cursor: 60, .copilot: 60, .deepseek: 60, .ollama: 10
+    ]
+    /// A missing CLI or app is checked again periodically.
     private let missingInterval: TimeInterval = 5 * 60
 
-    /// Vendors the menu bar shows: everything whose CLI exists. Missing ones are listed in the panel only.
+    /// Vendors the menu bar shows: everything installed and configured.
     var installed: [Vendor] {
         Vendor.allCases.filter { v in
             guard let s = snaps[v] else { return true }
@@ -53,7 +56,6 @@ final class Store: ObservableObject {
         refresh(force: true)
     }
 
-    /// Called by the timer (every 30 s, cheap checks only), on wake, on hover and from the panel.
     func refresh(force: Bool = false, olderThan: TimeInterval? = nil) {
         guard !asleep else { return }
         for v in Vendor.allCases where shouldPoll(v, force: force, olderThan: olderThan) {
@@ -67,7 +69,7 @@ final class Store: ObservableObject {
         let age = Date().timeIntervalSince(last)
         if force { return true }
         if let s = snaps[v], s.state == .missing || s.state == .untrusted { return age > missingInterval }
-        if v == .claude { return age > 30 }      // the file read is free; the expensive part is gated inside
+        if v == .claude { return age > 30 }
         if let o = olderThan { return age > o }
         if let s = snaps[v], s.windows.contains(where: { $0.resetPassed }) { return age > 60 }
         let act = activity(v)
@@ -75,22 +77,36 @@ final class Store: ObservableObject {
         return age > idleInterval[v]!
     }
 
-    /// Newest mtime among the files that move when this vendor's quota is being spent.
     private func activity(_ v: Vendor) -> Date? {
         let fm = FileManager.default
         var candidates: [String]
         switch v {
-        case .claude: candidates = [Fetch.claudeFilePath]
-        case .gemini: candidates = ["\(home)/.gemini/antigravity-cli/conversations"]
+        case .claude:
+            candidates = [Fetch.claudeFilePath, "\(home)/Library/Application Support/Claude/plan-usage-history.json"]
+        case .gemini:
+            candidates = [
+                "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
+                "\(home)/.gemini/antigravity/conversation_summaries.db",
+                "\(home)/.gemini/antigravity/conversations",
+                "\(home)/.gemini/antigravity-cli/conversations"
+            ]
         case .codex:
-            // ~/.codex/sessions/YYYY/MM/DD: today's directory moves on every new session
             let c = Calendar.current, d = Date(), root = "\(home)/.codex/sessions"
             candidates = [root, String(format: "%@/%04d/%02d/%02d", root, c.component(.year, from: d),
                                        c.component(.month, from: d), c.component(.day, from: d))]
-        case .grok: candidates = ["\(home)/.grok/sessions"]
+        case .grok:
+            candidates = ["\(home)/.grok/sessions", "\(home)/Library/Application Support/Grok Bot/sand-client-persistence"]
+        case .cursor:
+            candidates = ["\(home)/Library/Application Support/Cursor/User/globalStorage/state.vscdb"]
+        case .copilot:
+            candidates = ["\(home)/.copilot/session-state", "\(home)/.copilot/session-store.db-wal"]
+        case .deepseek:
+            candidates = ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key"]
+        case .ollama:
+            candidates = []
         }
         if v == .grok, let root = candidates.last, let subs = try? fm.contentsOfDirectory(atPath: root) {
-            candidates += subs.map { "\(root)/\($0)" }       // one level down: per-project session folders
+            candidates += subs.map { "\(root)/\($0)" }
         }
         return candidates.compactMap { Fetch.mtime($0) }.max()
     }
@@ -98,7 +114,7 @@ final class Store: ObservableObject {
     private func schedule(_ v: Vendor, force: Bool) {
         busy.insert(v)
         let act = activity(v)
-        let prev = snaps[v]                        // read on main; fetch runs on the queue
+        let prev = snaps[v]
         queue.async { [weak self] in
             guard let self = self else { return }
             let s = self.fetch(v, prev: prev, force: force)
@@ -111,10 +127,26 @@ final class Store: ObservableObject {
         }
     }
 
-    /// Runs on the serial queue.
     private func fetch(_ v: Vendor, prev: Snapshot?, force: Bool) -> Snapshot {
         switch v {
         case .claude:
+            if let fileSnap = Fetch.claudeFile() {
+                var s = fileSnap
+                if force || Date().timeIntervalSince(lastAccountCheck) > 30 * 60 {
+                    lastAccountCheck = Date()
+                    claudeAccount = Fetch.claudeAccount() ?? claudeAccount
+                }
+                if let acct = claudeAccount, !acct.plan.isEmpty { s.plan = acct.plan }
+                let fileAge = s.measuredAt.map { Date().timeIntervalSince($0) } ?? .infinity
+                if fileAge > 20 * 60, force || Date().timeIntervalSince(lastClaudeUsage) > 20 * 60 {
+                    if case .ok = CLI.find("claude") {
+                        lastClaudeUsage = Date()
+                        let usageSnap = Fetch.claudeUsage()
+                        if usageSnap.state == .ok { s = usageSnap }
+                    }
+                }
+                return s
+            }
             if case .missing = CLI.find("claude") { return .status(.claude, .missing) }
             if case .untrusted = CLI.find("claude") { return .status(.claude, .untrusted, "claude could be replaced by another account — not run") }
             if force || Date().timeIntervalSince(lastAccountCheck) > 30 * 60 {
@@ -134,8 +166,6 @@ final class Store: ObservableObject {
         case .gemini:
             return Fetch.gemini()
         case .codex:
-            // Session logs are free and exact; the app-server adds the reset credits, covers idle hours and
-            // tells a signed-out CLI apart.
             if case .ok = CLI.find("codex"), !force, let logs = Fetch.codexFromLogs(),
                let m = logs.measuredAt, Date().timeIntervalSince(m) < 10 * 60,
                Date().timeIntervalSince(lastCodexServer) < 30 * 60 {
@@ -149,21 +179,27 @@ final class Store: ObservableObject {
             return s
         case .grok:
             return Fetch.grok()
+        case .cursor:
+            return Fetch.cursor()
+        case .copilot:
+            return Fetch.copilot()
+        case .deepseek:
+            return Fetch.deepseek()
+        case .ollama:
+            return Fetch.ollama()
         }
     }
 
     private func apply(_ v: Vendor, _ s: Snapshot) {
         var s = s
         if s.state == .failed, var old = snaps[v], old.state == .ok, !old.windows.isEmpty {
-            old.error = "Couldn't read — showing last known values" + (s.error.map { " (\($0))" } ?? "")   // our own fixed texts
+            old.error = "Couldn't read — showing last known values" + (s.error.map { " (\($0))" } ?? "")
             s = old
         }
         if s.plan.isEmpty, s.state == .ok { s.plan = snaps[v]?.plan ?? "" }
         snaps[v] = s
         saveCache()
     }
-
-    // MARK: cache — percentages, reset times and plan names only
 
     private func loadCache() {
         guard let d = try? Data(contentsOf: URL(fileURLWithPath: cacheFile)) else { return }

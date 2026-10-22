@@ -737,6 +737,7 @@ func (f *Fetcher) Muse() Snapshot {
 	}
 
 	provider := "Meta"
+	model := "muse-spark-1.3-contributor"
 	authPath := filepath.Join(f.HomeDir, ".config", "muse", "auth.json")
 	if data, err := os.ReadFile(authPath); err == nil {
 		var obj map[string]any
@@ -749,16 +750,24 @@ func (f *Fetcher) Muse() Snapshot {
 			}
 		}
 	}
+	if data, err := os.ReadFile(configPath); err == nil {
+		var obj map[string]any
+		if json.Unmarshal(data, &obj) == nil {
+			if m, ok := obj["model"].(string); ok && m != "" {
+				model = m
+			}
+		}
+	}
 
 	now := time.Now()
-	w := Window{Label: "Active", Short: "m", Used: Percent(0.0)}
+	w := Window{Label: "Unmetered", Short: "m"}
 	return Snapshot{
 		Vendor:     VendorMuse,
 		State:      StateOK,
-		Plan:       fmt.Sprintf("Muse Code (%s)", provider),
+		Plan:       fmt.Sprintf("Muse Code (%s)", model),
 		Bar:        &w,
-		Windows:    []Window{w},
-		Notes:      []string{"Provider: " + provider},
+		Windows:    []Window{},
+		Notes:      []string{fmt.Sprintf("%s · Unmetered Preview", provider)},
 		MeasuredAt: &now,
 	}
 }

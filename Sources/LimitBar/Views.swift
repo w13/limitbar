@@ -364,11 +364,11 @@ private struct VendorCard: View {
     @ViewBuilder
     private func museBody(_ s: Snapshot?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Active")
+            Text("Unmetered")
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(Color.primary)
             Spacer()
-            Text(s?.plan ?? "Muse Code")
+            Text("No Quota Cap")
                 .font(.system(size: 8.5, weight: .medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -376,10 +376,19 @@ private struct VendorCard: View {
                 .background(RoundedRectangle(cornerRadius: 3.5).fill(Color.primary.opacity(0.06)))
         }
 
-        Text(s?.notes.first ?? "Coding Assistant")
-            .font(.system(size: 9))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+        HStack(spacing: 4) {
+            Text(s?.plan ?? "Muse Code")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+            if let note = s?.notes.last, note.contains("prompts") {
+                Text(note)
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
     }
 
     @ViewBuilder
@@ -389,26 +398,31 @@ private struct VendorCard: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         } else if let windows = s?.windows, !windows.isEmpty {
-            let primary = windows[0]
-            let due = primary.resetPassed
-            let hot = !due && (primary.used ?? 0) >= 90
+            VStack(spacing: 3) {
+                ForEach(Array(windows.prefix(2).enumerated()), id: \.offset) { _, w in
+                    let due = w.resetPassed
+                    let hot = !due && (w.used ?? 0) >= 90
 
-            HStack(spacing: 4) {
-                Text(primary.label)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                Text(due || primary.used == nil ? "—" : "\(percentText(primary.used))%")
-                    .font(.system(size: 10.5, weight: hot ? .bold : .semibold).monospacedDigit())
-                    .foregroundStyle(hot ? Color.hot : Color.primary)
+                    VStack(alignment: .leading, spacing: 1.5) {
+                        HStack(spacing: 4) {
+                            Text(w.label)
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(due || w.used == nil ? "—" : "\(percentText(w.used))%")
+                                .font(.system(size: 10, weight: hot ? .bold : .semibold).monospacedDigit())
+                                .foregroundStyle(hot ? Color.hot : Color.primary)
+                        }
+
+                        if !due {
+                            Track(fraction: (w.used ?? 0) / 100, height: 2.5, vendor: vendor, hot: hot)
+                        }
+                    }
+                }
             }
 
-            if !due {
-                Track(fraction: (primary.used ?? 0) / 100, height: 3, vendor: vendor, hot: hot)
-            }
-
-            let sub = sublineText(snap: s, primaryWindow: primary, due: due)
+            let sub = sublineText(snap: s, primaryWindow: windows[0], due: windows[0].resetPassed)
             if !sub.isEmpty {
                 Text(sub)
                     .font(.system(size: 8.5))
@@ -434,11 +448,6 @@ private struct VendorCard: View {
             let f = DateFormatter()
             f.dateFormat = Calendar.current.isDateInToday(r) ? "HH:mm" : "EEE HH:mm"
             parts.append("resets " + f.string(from: r))
-        } else if let windows = snap?.windows, windows.count > 1 {
-            let sec = windows[1]
-            if let u = sec.used {
-                parts.append("\(sec.short): \(percentText(u))%")
-            }
         }
         if parts.isEmpty, let plan = snap?.plan, !plan.isEmpty {
             return plan

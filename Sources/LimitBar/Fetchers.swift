@@ -359,13 +359,18 @@ enum Fetch {
             }
             let planLabel = (usage["grokPlanLabel"] as? String) ?? "Grok Bot Plan"
             let w = Window(label: "Weekly credits", short: "w", used: percent(pct), resetsAt: resetDate)
+            var windows = [w]
             var notes: [String] = []
             if let onDemand = usage["onDemand"] as? [String: Any],
                let used = onDemand["usedCents"] as? Double,
                let limit = onDemand["limitCents"] as? Double {
                 notes.append(String(format: "$%.2f / $%.2f on-demand used", used / 100, limit / 100))
+                if limit > 0 {
+                    let onDemandPct = (used / limit) * 100
+                    windows.append(Window(label: "On-demand spend", short: "$", used: percent(onDemandPct), resetsAt: nil))
+                }
             }
-            return Snapshot(vendor: .grok, plan: planLabel, bar: w, windows: [w], notes: notes, measuredAt: Date())
+            return Snapshot(vendor: .grok, plan: planLabel, bar: w, windows: windows, notes: notes, measuredAt: Date())
         }
         return nil
     }
@@ -702,19 +707,55 @@ enum Fetch {
             return .status(.muse, .missing)
         }
         var provider = "Meta"
+        var model = "muse-spark-1.3-contributor"
         let authPath = "\(home)/.config/muse/auth.json"
         if let d = try? Data(contentsOf: URL(fileURLWithPath: authPath)), let obj = json(d),
            let provs = obj["providers"] as? [String: Any], let first = provs.keys.first {
             provider = first.capitalized
         }
-        let activeTime = mtime(authPath) ?? mtime(configPath) ?? Date()
-        let barWin = Window(label: "Active", short: "m", used: nil, resetsAt: nil)
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: configPath)), let obj = json(d),
+           let m = obj["model"] as? String, !m.isEmpty {
+            model = m
+        }
+
+        // Query local Muse SQLite database for session and prompt history
+        let dbPath = "\(home)/.local/share/muse/session-index.db"
+        var promptCount = 0
+        var sessionCount = 0
+        var latestActive: Date?
+        if FileManager.default.fileExists(atPath: dbPath) {
+            var db: OpaquePointer?
+            let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+            if sqlite3_open_v2("file://\(dbPath)?immutable=1", &db, flags, nil) == SQLITE_OK {
+                defer { sqlite3_close(db) }
+                var stmt: OpaquePointer?
+                let sql = "SELECT count(*), coalesce(sum(prompt_count), 0), coalesce(max(updated_at_us), 0) FROM sessions"
+                if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                    if sqlite3_step(stmt) == SQLITE_ROW {
+                        sessionCount = Int(sqlite3_column_int64(stmt, 0))
+                        promptCount = Int(sqlite3_column_int64(stmt, 1))
+                        let latestUs = sqlite3_column_int64(stmt, 2)
+                        if latestUs > 0 {
+                            latestActive = Date(timeIntervalSince1970: Double(latestUs) / 1_000_000.0)
+                        }
+                    }
+                    sqlite3_finalize(stmt)
+                }
+            }
+        }
+
+        let activeTime = latestActive ?? mtime(authPath) ?? mtime(configPath) ?? Date()
+        let barWin = Window(label: "Unmetered", short: "m", used: nil, resetsAt: nil)
+        var notes: [String] = ["\(provider) · Unmetered Preview"]
+        if sessionCount > 0 {
+            notes.append("\(promptCount) prompts · \(sessionCount) sessions")
+        }
         return Snapshot(
             vendor: .muse,
-            plan: "Muse Code (\(provider))",
+            plan: "Muse Code (\(model))",
             bar: barWin,
             windows: [],
-            notes: ["Provider: \(provider) · Active"],
+            notes: notes,
             measuredAt: activeTime
         )
     }

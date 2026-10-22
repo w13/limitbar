@@ -15,6 +15,10 @@
 
 <br/>
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="LimitBar Overview Screenshot" width="560" />
+</p>
+
 > **Fork Notice**: Forked and extended from [dancik/limitbar](https://github.com/dancik/limitbar) with native desktop app integration, multi-agent framework tracking, DeepSeek API balance support, and Ollama local model monitoring.
 
 </div>

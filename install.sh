@@ -15,7 +15,7 @@ VERSION="1.1.0"
 # Pinned by this commit of install.sh: the release zip must match it byte for byte, and the source build
 # must check out exactly this commit.
 ZIP_SHA256="0426b0f6a7d67ecbbfe71f45a0219c228ac6c359305577774d8135138874aa78"
-SOURCE_COMMIT="40db32057998ff7f2b8c43d105ff2ef7fd14e35d"
+SOURCE_COMMIT="152e68988420c57034ca99e2f8376ad724ece904"
 
 APP_DIR="$HOME/Applications"
 APP="$APP_DIR/LimitBar.app"

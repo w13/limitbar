@@ -555,28 +555,24 @@ func (f *Fetcher) DeepSeek() Snapshot {
 		if curr == "CNY" {
 			sym = "¥"
 		}
-		used := 0.0
-		if total <= 2.0 {
-			used = 95.0
-		}
-		w := Window{
-			Label: "Balance (" + curr + ")",
+		isLow := total <= 2.0
+		barWin := Window{
+			Label: "Balance",
 			Short: sym,
-			Used:  Percent(used),
 		}
-		note := fmt.Sprintf("%s%.2f %s remaining", sym, total, curr)
-		if total <= 0 {
-			note += " · Low balance"
-		}
+		note := fmt.Sprintf("%s%.2f %s balance", sym, total, curr)
 		now := time.Now()
 		return Snapshot{
-			Vendor:     VendorDeepSeek,
-			State:      StateOK,
-			Plan:       "DeepSeek API",
-			Bar:        &w,
-			Windows:    []Window{w},
-			Notes:      []string{note},
-			MeasuredAt: &now,
+			Vendor:          VendorDeepSeek,
+			State:           StateOK,
+			Plan:            "DeepSeek API",
+			Bar:             &barWin,
+			Windows:         []Window{},
+			Notes:           []string{note},
+			MeasuredAt:      &now,
+			BalanceAmount:   &total,
+			BalanceCurrency: curr,
+			BalanceIsLow:    &isLow,
 		}
 	}
 
@@ -624,23 +620,22 @@ func (f *Fetcher) Kimi() Snapshot {
 					if total == 0 {
 						total = cash + voucher
 					}
-					used := 0.0
-					if total <= 0 {
-						used = 100.0
-					}
-					w := Window{
-						Label: "Balance (¥)",
+					isLow := total <= 0
+					barWin := Window{
+						Label: "Balance",
 						Short: "¥",
-						Used:  Percent(used),
 					}
 					return Snapshot{
-						Vendor:     VendorKimi,
-						State:      StateOK,
-						Plan:       fmt.Sprintf("Kimi Code (%s)", model),
-						Bar:        &w,
-						Windows:    []Window{w},
-						Notes:      []string{fmt.Sprintf("¥%.2f CNY · %s", total, model)},
-						MeasuredAt: &now,
+						Vendor:          VendorKimi,
+						State:           StateOK,
+						Plan:            fmt.Sprintf("Kimi Code (%s)", model),
+						Bar:             &barWin,
+						Windows:         []Window{},
+						Notes:           []string{fmt.Sprintf("¥%.2f CNY · %s", total, model)},
+						MeasuredAt:      &now,
+						BalanceAmount:   &total,
+						BalanceCurrency: "CNY",
+						BalanceIsLow:    &isLow,
 					}
 				}
 			}
@@ -713,18 +708,22 @@ func (f *Fetcher) Reasonix() Snapshot {
 
 	note := fmt.Sprintf("Ready · %s", model)
 	if todayCost > 0 {
-		note = fmt.Sprintf("$%.2f USD session spend · %s", todayCost, model)
+		note = fmt.Sprintf("Session: $%.2f USD · %s", todayCost, model)
 	}
 
-	w := Window{Label: "Spend", Short: "$", Used: Percent(0.0)}
+	barWin := Window{Label: "Spend", Short: "$"}
+	isLow := false
 	return Snapshot{
-		Vendor:     VendorReasonix,
-		State:      StateOK,
-		Plan:       fmt.Sprintf("Reasonix (%s)", model),
-		Bar:        &w,
-		Windows:    []Window{w},
-		Notes:      []string{note},
-		MeasuredAt: &now,
+		Vendor:          VendorReasonix,
+		State:           StateOK,
+		Plan:            fmt.Sprintf("Reasonix (%s)", model),
+		Bar:             &barWin,
+		Windows:         []Window{},
+		Notes:           []string{note},
+		MeasuredAt:      &now,
+		BalanceAmount:   &todayCost,
+		BalanceCurrency: "USD",
+		BalanceIsLow:    &isLow,
 	}
 }
 

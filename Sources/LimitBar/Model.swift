@@ -126,6 +126,10 @@ struct Snapshot: Codable, Equatable {
     var notes: [String] = []      // notes, e.g. "0 / 500 requests used"
     var measuredAt: Date?         // when the vendor's numbers were taken
     var error: String?            // last failure, shown dimmed; previous numbers are kept
+    var balanceAmount: Double?    // currency quota/balance/spend (e.g. -0.27, 2.31)
+    var balanceCurrency: String?  // "USD", "CNY"
+    var balanceIsLow: Bool?       // true if negative or below threshold
+    var isBalanceQuota: Bool { balanceAmount != nil }
 
     /// Any window of this vendor at ≥ 90 % other than the one in the bar → "!" next to the digit.
     var otherHot: Bool {

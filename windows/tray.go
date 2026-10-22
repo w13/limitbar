@@ -295,7 +295,23 @@ func showContextMenu(hwnd windows.Handle) {
 				continue
 			}
 			label := fmt.Sprintf("%s: Active", v.Name())
-			if snap.Bar != nil && snap.Bar.Used != nil {
+			if snap.IsBalanceQuota() {
+				sym := "$"
+				if snap.BalanceCurrency == "CNY" {
+					sym = "¥"
+				}
+				amt := 0.0
+				if snap.BalanceAmount != nil {
+					amt = *snap.BalanceAmount
+				}
+				if snap.BalanceIsLow != nil && *snap.BalanceIsLow {
+					label = fmt.Sprintf("%s: %s%.2f %s [Low Balance]", v.Name(), sym, amt, snap.BalanceCurrency)
+				} else if v == VendorReasonix {
+					label = fmt.Sprintf("%s: %s%.2f %s [Session Spend]", v.Name(), sym, amt, snap.BalanceCurrency)
+				} else {
+					label = fmt.Sprintf("%s: %s%.2f %s [Balance]", v.Name(), sym, amt, snap.BalanceCurrency)
+				}
+			} else if snap.Bar != nil && snap.Bar.Used != nil {
 				label = fmt.Sprintf("%s: %s%% used", v.Name(), PercentText(snap.Bar.Used))
 			}
 			if len(snap.Notes) > 0 {

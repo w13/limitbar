@@ -572,9 +572,19 @@ enum Fetch {
         let curr = (first["currency"] as? String) ?? "USD"
         let sym = curr == "CNY" ? "¥" : "$"
         let isLow = total <= 2.0
-        let w = Window(label: "Balance (\(curr))", short: sym, used: isLow ? 95.0 : 0.0, resetsAt: nil)
-        let note = String(format: "\(sym)%.2f %@ remaining%@", total, curr, total <= 0 ? " · Low balance" : "")
-        return Snapshot(vendor: .deepseek, plan: "DeepSeek API", bar: w, windows: [w], notes: [note], measuredAt: Date())
+        let barWin = Window(label: "Balance", short: sym, used: isLow ? 100.0 : nil, resetsAt: nil)
+        let note = String(format: "%@%.2f %@ balance", sym, total, curr)
+        return Snapshot(
+            vendor: .deepseek,
+            plan: "DeepSeek API",
+            bar: barWin,
+            windows: [],
+            notes: [note],
+            measuredAt: Date(),
+            balanceAmount: total,
+            balanceCurrency: curr,
+            balanceIsLow: isLow
+        )
     }
 
     // MARK: - Kimi Code CLI
@@ -621,10 +631,19 @@ enum Fetch {
                 let voucher = (data["voucher_balance"] as? Double) ?? 0
                 let total = avail > 0 ? avail : (cash + voucher)
                 let isLow = total <= 0
-                let w = Window(label: "Balance (¥)", short: "¥", used: isLow ? 100.0 : 0.0, resetsAt: nil)
+                let barWin = Window(label: "Balance", short: "¥", used: isLow ? 100.0 : nil, resetsAt: nil)
                 let note = String(format: "¥%.2f CNY · %@", total, model)
-                return Snapshot(vendor: .kimi, plan: "Kimi Code (\(model))", bar: w, windows: [w],
-                                notes: [note], measuredAt: Date())
+                return Snapshot(
+                    vendor: .kimi,
+                    plan: "Kimi Code (\(model))",
+                    bar: barWin,
+                    windows: [],
+                    notes: [note],
+                    measuredAt: Date(),
+                    balanceAmount: total,
+                    balanceCurrency: "CNY",
+                    balanceIsLow: isLow
+                )
             }
         }
 
@@ -659,10 +678,19 @@ enum Fetch {
             }
         }
 
-        let costNote = todayCost > 0 ? String(format: "$%.2f USD session spend · %@", todayCost, model) : "Ready · \(model)"
-        let w = Window(label: "Spend", short: "$", used: 0, resetsAt: nil)
-        return Snapshot(vendor: .reasonix, plan: "Reasonix (\(model))", bar: w, windows: [w],
-                        notes: [costNote], measuredAt: latestDate ?? Date())
+        let costNote = todayCost > 0 ? String(format: "Session: $%.2f USD · %@", todayCost, model) : "Ready · \(model)"
+        let barWin = Window(label: "Spend", short: "$", used: nil, resetsAt: nil)
+        return Snapshot(
+            vendor: .reasonix,
+            plan: "Reasonix (\(model))",
+            bar: barWin,
+            windows: [],
+            notes: [costNote],
+            measuredAt: latestDate ?? Date(),
+            balanceAmount: todayCost,
+            balanceCurrency: "USD",
+            balanceIsLow: false
+        )
     }
 
     // MARK: - Muse Code
@@ -680,9 +708,15 @@ enum Fetch {
             provider = first.capitalized
         }
         let activeTime = mtime(authPath) ?? mtime(configPath) ?? Date()
-        let w = Window(label: "Active", short: "m", used: 0, resetsAt: nil)
-        return Snapshot(vendor: .muse, plan: "Muse Code (\(provider))", bar: w, windows: [w],
-                        notes: ["Provider: \(provider)"], measuredAt: activeTime)
+        let barWin = Window(label: "Active", short: "m", used: nil, resetsAt: nil)
+        return Snapshot(
+            vendor: .muse,
+            plan: "Muse Code (\(provider))",
+            bar: barWin,
+            windows: [],
+            notes: ["Provider: \(provider) · Active"],
+            measuredAt: activeTime
+        )
     }
 
     // MARK: - Ollama Local Models

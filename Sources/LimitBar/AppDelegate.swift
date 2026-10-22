@@ -56,7 +56,7 @@ final class AppDelegate: NSResponder, NSApplicationDelegate {
     // MARK: - Panel
 
     private func buildPanel() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 550, height: 440),
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 530, height: 380),
                         styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: true)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -96,8 +96,8 @@ final class AppDelegate: NSResponder, NSApplicationDelegate {
         guard size.height > 0, let button = item.button, let win = button.window else { return }
         let r = win.convertToScreen(button.convert(button.bounds, to: nil))
         guard let screen = (win.screen ?? NSScreen.main)?.visibleFrame else { return }
-        let width: CGFloat = 550
-        let maxAllowedHeight = min(screen.height - 60, 480)
+        let width: CGFloat = 530
+        let maxAllowedHeight = min(screen.height - 60, 640)
         let height = min(size.height, maxAllowedHeight)
 
         var x = r.midX - width / 2

@@ -55,7 +55,7 @@ struct TrayView: View {
                         .resizable()
                         .interpolation(.high)
                         .frame(width: 13, height: 13)
-                    digit(s)
+                    digit(s, vendor: v)
                 }
             }
         }
@@ -64,12 +64,53 @@ struct TrayView: View {
         .fixedSize()
     }
 
-    private func digit(_ s: Snapshot?) -> some View {
-        let w = s?.state == .ok ? s?.bar : nil
+    @ViewBuilder
+    private func digit(_ s: Snapshot?, vendor: Vendor) -> some View {
+        if let s = s, s.state == .ok {
+            if s.isBalanceQuota {
+                let isLow = s.balanceIsLow ?? false
+                let sym = s.balanceCurrency == "CNY" ? "¥" : "$"
+                if isLow {
+                    Text("\(sym)!")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(Color.hot)
+                        .fixedSize()
+                } else if let amt = s.balanceAmount, amt >= 0 {
+                    let str = amt < 100 ? String(format: "%@%.0f", sym, amt) : sym
+                    Text(str)
+                        .font(.system(size: 11.5, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.primary)
+                        .opacity(isStale(s) ? 0.5 : 1)
+                        .fixedSize()
+                } else {
+                    Text(sym)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .opacity(isStale(s) ? 0.5 : 1)
+                        .fixedSize()
+                }
+            } else if vendor == .muse {
+                Text("✓")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            } else {
+                rateLimitDigit(s)
+            }
+        } else {
+            Text("—")
+                .font(.system(size: 13).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+
+    private func rateLimitDigit(_ s: Snapshot) -> some View {
+        let w = s.bar
         let shown: Double? = (w == nil || w!.resetPassed) ? nil : w!.used
         let crit = (shown ?? 0) >= 90
         let weekly = w?.short == "w"
-        let bang = s?.otherHot ?? false
+        let bang = s.otherHot
         var t = Text(percentText(shown))
             .font(.system(size: 13, weight: crit ? .semibold : .regular).monospacedDigit())
         if weekly || bang {
@@ -95,8 +136,8 @@ struct PanelView: View {
     @ObservedObject private var ui = PanelUIState()
 
     private let columns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6)
     ]
 
     var body: some View {
@@ -107,10 +148,10 @@ struct PanelView: View {
 
                 Hairline()
 
-                // Scrollable 2-column card grid
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(spacing: 8) {
-                        LazyVGrid(columns: columns, spacing: 8) {
+                // 2-column card grid, scrollable only as a last resort
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 6) {
+                        LazyVGrid(columns: columns, spacing: 6) {
                             ForEach(store.installed, id: \.self) { v in
                                 VendorCard(
                                     vendor: v,
@@ -128,33 +169,32 @@ struct PanelView: View {
                             })
                         }
                     }
-                    .padding(8)
+                    .padding(6)
                 }
-                .frame(maxHeight: 460)
 
                 // Fixed footer (always visible)
                 Hairline()
                 footer
             }
-            .frame(width: 550)
+            .frame(width: 530)
         }
     }
 
     private var headerBar: some View {
         HStack(spacing: 6) {
-            Text("AI Subscriptions & Limits")
-                .font(.system(size: 12, weight: .semibold))
+            Text("AI Subscriptions & Quotas")
+                .font(.system(size: 11.5, weight: .semibold))
             Text("(\(store.installed.count) active)")
-                .font(.system(size: 11))
+                .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
             Spacer()
             if !store.busy.isEmpty {
                 Text("Refreshing…")
-                    .font(.system(size: 11))
+                    .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(EdgeInsets(top: 8, leading: 12, bottom: 7, trailing: 12))
+        .padding(EdgeInsets(top: 7, leading: 10, bottom: 6, trailing: 10))
     }
 
     private var footer: some View {
@@ -162,8 +202,8 @@ struct PanelView: View {
             FooterButton(title: store.busy.isEmpty ? "Refresh" : "Refreshing…") { store.refresh(force: true) }
                 .disabled(!store.busy.isEmpty)
             Spacer()
-            HStack(spacing: 6) {
-                Text("Launch at Login").font(.system(size: 11.5))
+            HStack(spacing: 5) {
+                Text("Launch at Login").font(.system(size: 11))
                 Toggle("", isOn: Binding(get: { ui.login }, set: { on in
                     do {
                         if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
@@ -174,7 +214,7 @@ struct PanelView: View {
             Spacer()
             FooterButton(title: "Quit", action: onQuit)
         }
-        .padding(EdgeInsets(top: 6, leading: 10, bottom: 8, trailing: 10))
+        .padding(EdgeInsets(top: 5, leading: 10, bottom: 6, trailing: 10))
     }
 
     private func promptConfig(for vendor: Vendor) {
@@ -209,8 +249,8 @@ private struct FooterButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.system(size: 11.5)).padding(.horizontal, 8).padding(.vertical, 3.5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
+            Text(title).font(.system(size: 11)).padding(.horizontal, 8).padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
     }
@@ -225,19 +265,19 @@ private struct VendorCard: View {
     var onConfigure: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Card Header
-            HStack(alignment: .center, spacing: 6) {
-                markView.frame(width: 15, height: 15)
+        VStack(alignment: .leading, spacing: 3) {
+            // Header: Mark + Title + App link + Age
+            HStack(alignment: .center, spacing: 5) {
+                markView.frame(width: 14, height: 14)
                 HStack(spacing: 3) {
                     Text(vendor.name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
                         .tracking(-0.1)
                         .lineLimit(1)
                     if vendor.appBundleId != nil && hasAppInstalled(vendor) {
                         Button(action: { openApp(for: vendor) }) {
                             Image(systemName: "arrow.up.forward.app")
-                                .font(.system(size: 9))
+                                .font(.system(size: 8.5))
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
@@ -246,68 +286,164 @@ private struct VendorCard: View {
                 }
                 Spacer(minLength: 4)
                 Text(ageText)
-                    .font(.system(size: 9.5))
+                    .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
             }
 
-            // Plan Subtitle
+            // Body: Balance Quota vs Muse vs Rate Limit
+            if let snap = snap, snap.isBalanceQuota {
+                balanceQuotaBody(snap)
+            } else if vendor == .muse {
+                museBody(snap)
+            } else {
+                rateLimitBody(snap)
+            }
+        }
+        .padding(EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8))
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.primary.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        )
+    }
+
+    @ViewBuilder
+    private func balanceQuotaBody(_ s: Snapshot) -> some View {
+        let isLow = s.balanceIsLow ?? false
+        let sym = s.balanceCurrency == "CNY" ? "¥" : "$"
+        let curr = s.balanceCurrency ?? "USD"
+        let amt = s.balanceAmount ?? 0.0
+
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(String(format: "%@%.2f %@", sym, amt, curr))
+                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(isLow ? Color.hot : Color.primary)
+            Spacer()
+            if isLow {
+                Text("Low Balance")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(Color.hot)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(RoundedRectangle(cornerRadius: 3.5).fill(Color.hot.opacity(0.12)))
+            } else if vendor == .reasonix {
+                Text("Spend")
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(RoundedRectangle(cornerRadius: 3.5).fill(Color.primary.opacity(0.06)))
+            } else {
+                Text("Balance")
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(RoundedRectangle(cornerRadius: 3.5).fill(Color.primary.opacity(0.06)))
+            }
+        }
+
+        HStack(spacing: 4) {
             Text(planLine)
-                .font(.system(size: 10))
+                .font(.system(size: 9))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+            Spacer()
+            if vendor == .deepseek && s.error != nil {
+                Button(action: { onConfigure?() }) {
+                    Text("Set Key")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.deepseekBlue)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
-            // Limit Windows / Meters
-            let windows = snap?.windows ?? []
-            ForEach(Array(windows.enumerated()), id: \.offset) { i, w in
-                MeterRow(window: w, vendor: vendor,
-                         style: i == 0 ? .primary : .normal)
-                    .opacity(isStale(snap) ? 0.48 : 1)
+    @ViewBuilder
+    private func museBody(_ s: Snapshot?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("Active")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Color.primary)
+            Spacer()
+            Text(s?.plan ?? "Muse Code")
+                .font(.system(size: 8.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1.5)
+                .background(RoundedRectangle(cornerRadius: 3.5).fill(Color.primary.opacity(0.06)))
+        }
+
+        Text(s?.notes.first ?? "Coding Assistant")
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func rateLimitBody(_ s: Snapshot?) -> some View {
+        if s?.state == .signedOut {
+            Text("Signed out")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        } else if let windows = s?.windows, !windows.isEmpty {
+            let primary = windows[0]
+            let due = primary.resetPassed
+            let hot = !due && (primary.used ?? 0) >= 90
+
+            HStack(spacing: 4) {
+                Text(primary.label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Text(due || primary.used == nil ? "—" : "\(percentText(primary.used))%")
+                    .font(.system(size: 10.5, weight: hot ? .bold : .semibold).monospacedDigit())
+                    .foregroundStyle(hot ? Color.hot : Color.primary)
             }
 
-            // Status message / fallback
-            if snap?.state == .signedOut {
-                Text("Signed out")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-            } else if windows.isEmpty {
-                Text(busy ? "Reading…" : "—")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
+            if !due {
+                Track(fraction: (primary.used ?? 0) / 100, height: 3, vendor: vendor, hot: hot)
             }
 
-            // Footnotes (spend, requests, notes)
-            ForEach(snap?.notes ?? [], id: \.self) { n in
-                Text(n)
-                    .font(.system(size: 9.5))
+            let sub = sublineText(snap: s, primaryWindow: primary, due: due)
+            if !sub.isEmpty {
+                Text(sub)
+                    .font(.system(size: 8.5))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
+        } else {
+            Text(busy ? "Reading…" : "—")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+    }
 
-            if let e = snap?.error {
-                HStack(spacing: 3) {
-                    Text(e)
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if vendor == .deepseek {
-                        Button(action: { onConfigure?() }) {
-                            Text("Set Key")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundStyle(Color.deepseekBlue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+    private func sublineText(snap: Snapshot?, primaryWindow: Window, due: Bool) -> String {
+        var parts: [String] = []
+        if let notes = snap?.notes, let first = notes.first, !first.isEmpty {
+            parts.append(first)
+        }
+        if due {
+            parts.append("reset · awaiting update")
+        } else if let r = primaryWindow.resetsAt {
+            let f = DateFormatter()
+            f.dateFormat = Calendar.current.isDateInToday(r) ? "HH:mm" : "EEE HH:mm"
+            parts.append("resets " + f.string(from: r))
+        } else if let windows = snap?.windows, windows.count > 1 {
+            let sec = windows[1]
+            if let u = sec.used {
+                parts.append("\(sec.short): \(percentText(u))%")
             }
         }
-        .padding(EdgeInsets(top: 7, leading: 9, bottom: 7, trailing: 9))
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(0.04))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-        )
+        if parts.isEmpty, let plan = snap?.plan, !plan.isEmpty {
+            return plan
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func hasAppInstalled(_ v: Vendor) -> Bool {
@@ -357,27 +493,26 @@ private struct MissingRow: View {
     var onConfigure: ((Vendor) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("Other Providers")
-                .font(.system(size: 10.5, weight: .medium))
+        HStack(spacing: 6) {
+            Text("Other:")
+                .font(.system(size: 9.5, weight: .medium))
                 .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                ForEach(vendors, id: \.self) { v in
-                    HStack(spacing: 3) {
-                        Image(nsImage: Marks.image(v))
-                            .renderingMode(.template)
-                            .resizable()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(.tertiary)
-                        Text(v.name)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                    }
+            ForEach(vendors, id: \.self) { v in
+                HStack(spacing: 3) {
+                    Image(nsImage: Marks.image(v))
+                        .renderingMode(.template)
+                        .resizable()
+                        .frame(width: 10, height: 10)
+                        .foregroundStyle(.tertiary)
+                    Text(v.name)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
                 }
             }
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
     }
 }
 

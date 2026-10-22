@@ -110,14 +110,21 @@ func (w Window) ResetPassed() bool {
 }
 
 type Snapshot struct {
-	Vendor     Vendor      `json:"vendor"`
-	State      VendorState `json:"state"`
-	Plan       string      `json:"plan,omitempty"`
-	Bar        *Window     `json:"bar,omitempty"`
-	Windows    []Window    `json:"windows"`
-	Notes      []string    `json:"notes"`
-	MeasuredAt *time.Time  `json:"measuredAt,omitempty"`
-	Error      string      `json:"error,omitempty"`
+	Vendor          Vendor      `json:"vendor"`
+	State           VendorState `json:"state"`
+	Plan            string      `json:"plan,omitempty"`
+	Bar             *Window     `json:"bar,omitempty"`
+	Windows         []Window    `json:"windows"`
+	Notes           []string    `json:"notes"`
+	MeasuredAt      *time.Time  `json:"measuredAt,omitempty"`
+	Error           string      `json:"error,omitempty"`
+	BalanceAmount   *float64    `json:"balanceAmount,omitempty"`
+	BalanceCurrency string      `json:"balanceCurrency,omitempty"`
+	BalanceIsLow    *bool       `json:"balanceIsLow,omitempty"`
+}
+
+func (s Snapshot) IsBalanceQuota() bool {
+	return s.BalanceAmount != nil
 }
 
 func (s Snapshot) OtherHot() bool {

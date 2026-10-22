@@ -1,5 +1,6 @@
 .build/
 build/
+install/
 *.zip
 SHA256SUMS
 .DS_Store

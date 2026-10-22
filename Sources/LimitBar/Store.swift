@@ -26,12 +26,14 @@ final class Store: ObservableObject {
     /// Slow safety net per source even when nothing moved.
     private let idleInterval: [Vendor: TimeInterval] = [
         .claude: 20 * 60, .gemini: 15 * 60, .codex: 30 * 60, .grok: 30 * 60,
-        .cursor: 15 * 60, .copilot: 15 * 60, .deepseek: 15 * 60, .ollama: 30
+        .cursor: 15 * 60, .copilot: 15 * 60, .deepseek: 15 * 60,
+        .kimi: 20 * 60, .reasonix: 15 * 60, .muse: 30 * 60, .ollama: 30
     ]
     /// Minimum gap between polls when activity moved.
     private let busyInterval: [Vendor: TimeInterval] = [
         .claude: 60, .gemini: 60, .codex: 60, .grok: 5 * 60,
-        .cursor: 60, .copilot: 60, .deepseek: 60, .ollama: 10
+        .cursor: 60, .copilot: 60, .deepseek: 60,
+        .kimi: 60, .reasonix: 60, .muse: 60, .ollama: 10
     ]
     /// A missing CLI or app is checked again periodically.
     private let missingInterval: TimeInterval = 5 * 60
@@ -101,7 +103,13 @@ final class Store: ObservableObject {
         case .copilot:
             candidates = ["\(home)/.copilot/session-state", "\(home)/.copilot/session-store.db-wal"]
         case .deepseek:
-            candidates = ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key"]
+            candidates = ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key", "\(home)/.reasonix/.env"]
+        case .kimi:
+            candidates = ["\(home)/.kimi-code/session_index.jsonl", "\(home)/.kimi-code/config.toml", "\(home)/.kimi-code/sessions"]
+        case .reasonix:
+            candidates = ["\(home)/.reasonix/usage.jsonl", "\(home)/.reasonix/stats"]
+        case .muse:
+            candidates = ["\(home)/.config/muse/auth.json", "\(home)/.config/muse/settings.json"]
         case .ollama:
             candidates = []
         }
@@ -185,6 +193,12 @@ final class Store: ObservableObject {
             return Fetch.copilot()
         case .deepseek:
             return Fetch.deepseek()
+        case .kimi:
+            return Fetch.kimi()
+        case .reasonix:
+            return Fetch.reasonix()
+        case .muse:
+            return Fetch.muse()
         case .ollama:
             return Fetch.ollama()
         }

@@ -140,7 +140,7 @@ enum CLI {
 
     /// Where the vendor CLIs install themselves. Fixed + NVM paths.
     static var searchPath: [String] {
-        var paths = ["\(home)/.local/bin", "\(home)/.grok/bin", "/opt/homebrew/bin", "/usr/local/bin",
+        var paths = ["\(home)/.local/bin", "\(home)/.kimi-code/bin", "\(home)/.grok/bin", "/opt/homebrew/bin", "/usr/local/bin",
                      "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin"]
         let nvmDir = "\(home)/.nvm/versions/node"
         if let vers = try? FileManager.default.contentsOfDirectory(atPath: nvmDir) {

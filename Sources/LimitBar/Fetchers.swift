@@ -49,6 +49,26 @@ enum Fetch {
                 return (appSupport, nil)
             }
         }
+        if v == .kimi {
+            let configPath = "\(home)/.kimi-code/config.toml"
+            let binPath = "\(home)/.kimi-code/bin/kimi"
+            if FileManager.default.fileExists(atPath: configPath) || FileManager.default.fileExists(atPath: binPath) {
+                return (binPath, nil)
+            }
+        }
+        if v == .reasonix {
+            let root = "\(home)/.reasonix"
+            if FileManager.default.fileExists(atPath: root) {
+                return (root, nil)
+            }
+        }
+        if v == .muse {
+            let configPath = "\(home)/.config/muse/settings.json"
+            let binPath = "\(home)/.local/bin/muse"
+            if FileManager.default.fileExists(atPath: configPath) || FileManager.default.fileExists(atPath: binPath) {
+                return (binPath, nil)
+            }
+        }
         if v == .deepseek {
             if let k = deepseekKey(), !k.isEmpty {
                 return (k, nil)
@@ -216,12 +236,9 @@ enum Fetch {
     }
 
     static func gemini() -> Snapshot {
-        // 1. Try Antigravity Desktop app first if present
         if let appSnap = antigravityApp() {
             return appSnap
         }
-
-        // 2. Try agy CLI if installed
         let (b, why) = binary(.gemini)
         guard let bin = b, !bin.contains(".vscdb") else {
             let dbPath = "\(home)/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
@@ -503,9 +520,18 @@ enum Fetch {
         if let env = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"], !env.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return env.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        for p in ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key"] {
-            if let s = try? String(contentsOfFile: p), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        for p in ["\(home)/.deepseek/api_key", "\(home)/.config/deepseek/api_key", "\(home)/.reasonix/.env"] {
+            if let s = try? String(contentsOfFile: p) {
+                for line in s.components(separatedBy: .newlines) {
+                    let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if clean.hasPrefix("DEEPSEEK_API_KEY=") {
+                        let val = clean.replacingOccurrences(of: "DEEPSEEK_API_KEY=", with: "")
+                            .trimmingCharacters(in: CharacterSet(charactersIn: "\"\' "))
+                        if !val.isEmpty { return val }
+                    } else if clean.hasPrefix("sk-") {
+                        return clean
+                    }
+                }
             }
         }
         return nil
@@ -547,8 +573,116 @@ enum Fetch {
         let sym = curr == "CNY" ? "¥" : "$"
         let isLow = total <= 2.0
         let w = Window(label: "Balance (\(curr))", short: sym, used: isLow ? 95.0 : 0.0, resetsAt: nil)
-        let note = String(format: "\(sym)%.2f %@ remaining", total, curr)
+        let note = String(format: "\(sym)%.2f %@ remaining%@", total, curr, total <= 0 ? " · Low balance" : "")
         return Snapshot(vendor: .deepseek, plan: "DeepSeek API", bar: w, windows: [w], notes: [note], measuredAt: Date())
+    }
+
+    // MARK: - Kimi Code CLI
+
+    static func kimi() -> Snapshot {
+        let configPath = "\(home)/.kimi-code/config.toml"
+        guard FileManager.default.fileExists(atPath: configPath) || FileManager.default.fileExists(atPath: "\(home)/.kimi-code/bin/kimi") else {
+            return .status(.kimi, .missing)
+        }
+        var apiKey: String?
+        var model = "Kimi K3"
+        if let s = try? String(contentsOfFile: configPath) {
+            for line in s.components(separatedBy: .newlines) {
+                let clean = line.trimmingCharacters(in: .whitespaces)
+                if clean.hasPrefix("default_model") {
+                    let m = clean.replacingOccurrences(of: "default_model", with: "")
+                        .replacingOccurrences(of: "=", with: "")
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "\"\' "))
+                    model = m.components(separatedBy: "/").last?.uppercased() ?? "Kimi K3"
+                }
+                if clean.hasPrefix("api_key") {
+                    apiKey = clean.replacingOccurrences(of: "api_key", with: "")
+                        .replacingOccurrences(of: "=", with: "")
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "\"\' "))
+                }
+            }
+        }
+
+        let sessionsPath = "\(home)/.kimi-code/session_index.jsonl"
+        let activeTime = mtime(sessionsPath) ?? mtime(configPath) ?? Date()
+
+        if let key = apiKey, !key.isEmpty, let url = URL(string: "https://api.moonshot.ai/v1/users/me/balance") {
+            var req = URLRequest(url: url)
+            req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            req.timeoutInterval = 8
+            var resData: Data?
+            let sem = DispatchSemaphore(value: 0)
+            let task = URLSession.shared.dataTask(with: req) { d, _, _ in resData = d; sem.signal() }
+            task.resume()
+            _ = sem.wait(timeout: .now() + 8)
+            if let d = resData, let obj = json(d), let data = obj["data"] as? [String: Any] {
+                let avail = (data["available_balance"] as? Double) ?? 0
+                let cash = (data["cash_balance"] as? Double) ?? 0
+                let voucher = (data["voucher_balance"] as? Double) ?? 0
+                let total = avail > 0 ? avail : (cash + voucher)
+                let isLow = total <= 0
+                let w = Window(label: "Balance (¥)", short: "¥", used: isLow ? 100.0 : 0.0, resetsAt: nil)
+                let note = String(format: "¥%.2f CNY · %@", total, model)
+                return Snapshot(vendor: .kimi, plan: "Kimi Code (\(model))", bar: w, windows: [w],
+                                notes: [note], measuredAt: Date())
+            }
+        }
+
+        let w = Window(label: model, short: "k", used: 0, resetsAt: nil)
+        return Snapshot(vendor: .kimi, plan: "Kimi Code (\(model))", bar: w, windows: [w],
+                        notes: ["Active model: \(model)"], measuredAt: activeTime)
+    }
+
+    // MARK: - Reasonix CLI
+
+    static func reasonix() -> Snapshot {
+        let root = "\(home)/.reasonix"
+        guard FileManager.default.fileExists(atPath: root) else { return .status(.reasonix, .missing) }
+        let statsDir = "\(root)/stats"
+        var model = "deepseek-v4-pro"
+        var todayCost = 0.0
+        var latestDate: Date?
+
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: statsDir) {
+            let jsonlFiles = files.filter { $0.hasSuffix(".jsonl") }.sorted()
+            if let newest = jsonlFiles.last {
+                let path = "\(statsDir)/\(newest)"
+                latestDate = mtime(path)
+                if let tail = try? String(contentsOfFile: path) {
+                    for line in tail.split(separator: "\n").suffix(50) {
+                        guard let obj = json(Data(line.utf8)) else { continue }
+                        if let cost = obj["selected_cost"] as? Double { todayCost += cost }
+                        else if let costStr = obj["cost_amount"] as? String, let c = Double(costStr) { todayCost += c }
+                        if let m = obj["model"] as? String { model = m.components(separatedBy: "/").last ?? m }
+                    }
+                }
+            }
+        }
+
+        let costNote = todayCost > 0 ? String(format: "$%.2f USD session spend · %@", todayCost, model) : "Ready · \(model)"
+        let w = Window(label: "Spend", short: "$", used: 0, resetsAt: nil)
+        return Snapshot(vendor: .reasonix, plan: "Reasonix (\(model))", bar: w, windows: [w],
+                        notes: [costNote], measuredAt: latestDate ?? Date())
+    }
+
+    // MARK: - Muse Code
+
+    static func muse() -> Snapshot {
+        let configPath = "\(home)/.config/muse/settings.json"
+        let binPath = "\(home)/.local/bin/muse"
+        guard FileManager.default.fileExists(atPath: configPath) || FileManager.default.fileExists(atPath: binPath) else {
+            return .status(.muse, .missing)
+        }
+        var provider = "Meta"
+        let authPath = "\(home)/.config/muse/auth.json"
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: authPath)), let obj = json(d),
+           let provs = obj["providers"] as? [String: Any], let first = provs.keys.first {
+            provider = first.capitalized
+        }
+        let activeTime = mtime(authPath) ?? mtime(configPath) ?? Date()
+        let w = Window(label: "Active", short: "m", used: 0, resetsAt: nil)
+        return Snapshot(vendor: .muse, plan: "Muse Code (\(provider))", bar: w, windows: [w],
+                        notes: ["Provider: \(provider)"], measuredAt: activeTime)
     }
 
     // MARK: - Ollama Local Models
@@ -685,7 +819,7 @@ enum Sandbox {
                 execDir = (parent as NSString).lastPathComponent.hasPrefix("@") ? parent : pkg
             }
         case .gemini: state = "\(home)/.gemini"; execDir = "\(home)/.gemini/antigravity-cli/bin"
-        case .claude, .cursor, .copilot, .deepseek, .ollama: return nil
+        case .claude, .cursor, .copilot, .deepseek, .kimi, .reasonix, .muse, .ollama: return nil
         }
         guard let start = CLI.launch(bin), let interp = start.first else { return nil }
         let none = "/nonexistent-limitbar"

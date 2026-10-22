@@ -1,7 +1,7 @@
 import Foundation
 
 enum Vendor: String, CaseIterable, Codable {
-    case claude, gemini, codex, grok, cursor, copilot, deepseek, ollama
+    case claude, gemini, codex, grok, cursor, copilot, deepseek, kimi, reasonix, muse, ollama
 
     var name: String {
         switch self {
@@ -12,6 +12,9 @@ enum Vendor: String, CaseIterable, Codable {
         case .cursor: return "Cursor"
         case .copilot: return "Copilot"
         case .deepseek: return "DeepSeek"
+        case .kimi: return "Kimi"
+        case .reasonix: return "Reasonix"
+        case .muse: return "Muse"
         case .ollama: return "Ollama"
         }
     }
@@ -26,6 +29,9 @@ enum Vendor: String, CaseIterable, Codable {
         case .cursor: return "cursor"
         case .copilot: return "copilot"
         case .deepseek: return "deepseek"
+        case .kimi: return "kimi"
+        case .reasonix: return "reasonix"
+        case .muse: return "muse"
         case .ollama: return "ollama"
         }
     }
@@ -39,6 +45,9 @@ enum Vendor: String, CaseIterable, Codable {
         case .cursor: return "Cursor IDE"
         case .copilot: return "GitHub Copilot CLI"
         case .deepseek: return "DeepSeek API"
+        case .kimi: return "Kimi Code CLI"
+        case .reasonix: return "Reasonix CLI"
+        case .muse: return "Muse Code"
         case .ollama: return "Ollama Local AI"
         }
     }
@@ -64,6 +73,9 @@ enum Vendor: String, CaseIterable, Codable {
         case .cursor: return "sign in through Cursor.app"
         case .copilot: return "run `copilot login` or `gh auth login`"
         case .deepseek: return "configure API key in panel"
+        case .kimi: return "run `kimi login` or check ~/.kimi-code"
+        case .reasonix: return "run `npx reasonix` or check ~/.reasonix"
+        case .muse: return "run `muse` or check ~/.config/muse"
         case .ollama: return "run `ollama serve` (http://localhost:11434)"
         }
     }
@@ -77,6 +89,9 @@ enum Vendor: String, CaseIterable, Codable {
         case .cursor: return "cursor"
         case .copilot: return "copilot"
         case .deepseek: return "deepseek"
+        case .kimi: return "kimi"
+        case .reasonix: return "reasonix"
+        case .muse: return "muse"
         case .ollama: return "ollama"
         }
     }

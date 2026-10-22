@@ -25,6 +25,9 @@ if args.contains("--probe") {
         case .cursor: all[v.rawValue] = Fetch.cursor()
         case .copilot: all[v.rawValue] = Fetch.copilot()
         case .deepseek: all[v.rawValue] = Fetch.deepseek()
+        case .kimi: all[v.rawValue] = Fetch.kimi()
+        case .reasonix: all[v.rawValue] = Fetch.reasonix()
+        case .muse: all[v.rawValue] = Fetch.muse()
         case .ollama: all[v.rawValue] = Fetch.ollama()
         }
     }

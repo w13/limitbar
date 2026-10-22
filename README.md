@@ -43,7 +43,10 @@ When using multiple AI coding tools—such as Cursor, Google Antigravity, Claude
 | **OpenAI / ChatGPT** | ChatGPT Desktop (`ChatGPT.app`), Codex CLI | App-bundled CLI daemon (`codex-cli`) + local session logs | Weekly limit %, available free full resets, next credit expiry date |
 | **Grok / xAI** | Grok Bot (`Grok Bot.app`), Grok Build CLI | Local client persistence (`sand-client-persistence/*.blob`) | Weekly credit utilization %, on-demand usage vs. allowance |
 | **Copilot** | GitHub Copilot CLI | Native `copilot -p "/usage" --output-format json` | Premium requests used (e.g., 1500 / 1500), monthly reset |
-| **DeepSeek** | DeepSeek API | `https://api.deepseek.com/user/balance` | Real-time balance (USD / CNY), currency symbol, low-balance alert |
+| **DeepSeek** | DeepSeek API | `https://api.deepseek.com/user/balance` / `~/.reasonix/.env` | Real-time balance (USD / CNY), currency symbol, low-balance alert |
+| **Kimi** | Kimi Code CLI (`kimi`) | `~/.kimi-code/config.toml` + Moonshot API balance | Model tier (`Kimi K3`), remaining balance in CNY (¥), multi-agent activity |
+| **Reasonix** | Reasonix CLI (`reasonix` / `npx reasonix`) | `~/.reasonix/stats/*.jsonl` & `config.toml` | Per-session spend (USD $), active model (`deepseek-v4-pro`), daily receipts |
+| **Muse** | Muse Code (`muse`) | `~/.config/muse/settings.json` & `auth.json` | Active provider configuration (`Meta`), local session status |
 | **Ollama** | Ollama Local Daemon | Local HTTP API (`127.0.0.1:11434`) | Active model name, VRAM allocation (GB), installed model inventory |
 
 ---
@@ -174,6 +177,9 @@ flowchart TD
         Grok["Grok Bot (sand-client-persistence)"]
         Copilot["GitHub Copilot CLI"]
         DeepSeek["DeepSeek API (Balance Endpoint)"]
+        Kimi["Kimi Code CLI (~/.kimi-code)"]
+        Reasonix["Reasonix CLI (~/.reasonix)"]
+        Muse["Muse Code (~/.config/muse)"]
         Ollama["Ollama Daemon (127.0.0.1:11434)"]
     end
 

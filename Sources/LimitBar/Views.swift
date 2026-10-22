@@ -28,6 +28,9 @@ extension Color {
     static let cursorCyan = Color(red: 0x00 / 255, green: 0xA3 / 255, blue: 0xFF / 255)
     static let copilotPurple = Color(red: 0x6E / 255, green: 0x40 / 255, blue: 0xC9 / 255)
     static let deepseekBlue = Color(red: 0x4D / 255, green: 0x6B / 255, blue: 0xFE / 255)
+    static let kimiCrimson = Color(red: 0xFF / 255, green: 0x2A / 255, blue: 0x6D / 255)
+    static let reasonixPurple = Color(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255)
+    static let museAmber = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
 }
 
 private let staleAfter: TimeInterval = 45 * 60
@@ -254,6 +257,9 @@ private struct VendorSection: View {
         case .cursor: img.foregroundStyle(Color.cursorCyan)
         case .copilot: img.foregroundStyle(Color.copilotPurple)
         case .deepseek: img.foregroundStyle(Color.deepseekBlue)
+        case .kimi: img.foregroundStyle(Color.kimiCrimson)
+        case .reasonix: img.foregroundStyle(Color.reasonixPurple)
+        case .muse: img.foregroundStyle(Color.museAmber)
         case .ollama: img.foregroundStyle(Color.primary)
         default: img.foregroundStyle(Color.primary)
         }
@@ -363,6 +369,9 @@ private struct Track: View {
             case .cursor: Capsule().fill(Color.cursorCyan)
             case .copilot: Capsule().fill(Color.copilotPurple)
             case .deepseek: Capsule().fill(Color.deepseekBlue)
+            case .kimi: Capsule().fill(Color.kimiCrimson)
+            case .reasonix: Capsule().fill(Color.reasonixPurple)
+            case .muse: Capsule().fill(Color.museAmber)
             case .ollama: Capsule().fill(Color.primary)
             default: Capsule().fill(Color.primary)
             }

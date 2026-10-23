@@ -284,7 +284,7 @@ func showContextMenu(hwnd windows.Handle) {
 		procAppendMenuW.Call(hMenu, flags, id, uintptr(unsafe.Pointer(pText)))
 	}
 
-	appendMenuItem(0, "LimitBar v1.1.0 for Windows", MF_GRAYED|MF_STRING)
+	appendMenuItem(0, "LimitBar v1.2.0 for Windows", MF_GRAYED|MF_STRING)
 	appendMenuItem(0, "", MF_SEPARATOR)
 
 	if currentTray != nil {

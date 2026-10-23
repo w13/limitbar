@@ -294,7 +294,7 @@ func (f *Fetcher) Cursor() Snapshot {
 		return StatusSnapshot(VendorCursor, StateFailed, err.Error())
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("User-Agent", "LimitBar/1.1.0 (FreeBSD)")
+	req.Header.Set("User-Agent", "LimitBar/1.2.0 (FreeBSD)")
 
 	resp, err := f.HTTPClient.Do(req)
 	if err != nil {
@@ -836,7 +836,7 @@ func (f *Fetcher) DeepSeek() Snapshot {
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "LimitBar/1.1.0 (FreeBSD)")
+	req.Header.Set("User-Agent", "LimitBar/1.2.0 (FreeBSD)")
 
 	resp, err := f.HTTPClient.Do(req)
 	if err != nil {

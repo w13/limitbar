@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Version = "1.1.0"
+const Version = "1.2.0"
 
 func main() {
 	probeFlag := flag.Bool("probe", false, "Ask every tool once and print full JSON snapshot")

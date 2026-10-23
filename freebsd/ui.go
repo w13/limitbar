@@ -231,7 +231,7 @@ func formatCard(v Vendor, s Snapshot, width int) []string {
 
 func RenderDashboard(store *Store) {
 	fmt.Printf("%s%s┌────────────────────────────────────────────────────────┐%s\n", ansiCyan, ansiBold, ansiReset)
-	fmt.Printf("%s%s│  LimitBar 1.1.0 · FreeBSD AI Quota & Rate Limit Bar   │%s\n", ansiCyan, ansiBold, ansiReset)
+	fmt.Printf("%s%s│  LimitBar 1.2.0 · FreeBSD AI Quota & Rate Limit Bar   │%s\n", ansiCyan, ansiBold, ansiReset)
 	fmt.Printf("%s%s└────────────────────────────────────────────────────────┘%s\n\n", ansiCyan, ansiBold, ansiReset)
 
 	installed := store.Installed()

@@ -131,7 +131,7 @@ func (f *Fetcher) Cursor() Snapshot {
 		return StatusSnapshot(VendorCursor, StateFailed, "Invalid request URL")
 	}
 	req.Header.Set("Cookie", fmt.Sprintf("WorkosCursorSessionToken=%s%%3A%%3A%s", userId, token))
-	req.Header.Set("User-Agent", "LimitBar-Windows/1.1.0")
+	req.Header.Set("User-Agent", "LimitBar-Windows/1.2.0")
 
 	resp, err := f.HTTPClient.Do(req)
 	if err != nil {

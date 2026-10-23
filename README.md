@@ -133,6 +133,20 @@ See the [FreeBSD README](freebsd/README.md) for complete details and Polybar / W
 
 ---
 
+## 📦 Releases & Platform Binaries
+
+| Platform | Architecture | Package / Binary | SHA-256 Checksum |
+| :--- | :--- | :--- | :--- |
+| **macOS** | Universal (Apple Silicon & Intel) | `LimitBar-1.2.0.zip` | `4b4a43a707433912af411a9fbfaac5e7a9437b8e4c90c9fbca778ca2d3058d54` |
+| **Windows** | x86_64 (64-bit) | `LimitBar.exe` | `600b887a7570f2cef34ba2814cf080f17d876bfd56988ee14e6f56730f29848f` |
+| **Windows** | ARM64 | `LimitBar-arm64.exe` | `a3b33453074ffa6235947e741c6fb8b063af7de86a56f3c012483b7a98cd72b2` |
+| **FreeBSD** | amd64 (x86_64) | `limitbar-freebsd-amd64` | `f1080aaa62e269c3400c4746b2032cce6d7230554107002ab50113a5cbfe9c11` |
+| **FreeBSD** | arm64 (aarch64) | `limitbar-freebsd-arm64` | `8cc317568dfaf4913156c8586bc44a8bbfeca9a39fd38c199b19344a4978eaee` |
+
+All macOS builds are sealed with ad-hoc code signatures and verified with Sigstore build provenance attestation.
+
+---
+
 ## ⚙️ Configuration
 
 ### Configuring DeepSeek API Key

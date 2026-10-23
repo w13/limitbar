@@ -125,7 +125,7 @@ final class AppDelegate: NSResponder, NSApplicationDelegate {
 
     private func showContextMenu() {
         let menu = NSMenu()
-        let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0"
+        let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
         let titleItem = NSMenuItem(title: "LimitBar v\(ver)", action: nil, keyEquivalent: "")
         titleItem.isEnabled = false
         menu.addItem(titleItem)

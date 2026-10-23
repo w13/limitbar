@@ -14,3 +14,4 @@ SHA256SUMS
 state.json
 claude-status.json
 *.exe
+limitbar-freebsd-*

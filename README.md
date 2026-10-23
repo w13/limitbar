@@ -6,6 +6,7 @@
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue?logo=apple&style=flat-square)](https://apple.com)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&style=flat-square)](windows/README.md)
+[![FreeBSD](https://img.shields.io/badge/FreeBSD-13%2B-AB2B28?logo=freebsd&style=flat-square)](freebsd/README.md)
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&style=flat-square)](https://swift.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero-brightgreen?style=flat-square)](#security--privacy)
@@ -114,6 +115,21 @@ Or cross-compile from macOS/Linux:
 cd windows && ./build.sh
 ```
 See the [Windows README](windows/README.md) for complete details.
+
+### FreeBSD Edition (x86_64 & ARM64)
+
+LimitBar includes a standalone FreeBSD port featuring an interactive two-column ANSI terminal dashboard, one-line status feeds (`--bar` / `--polybar` / `--tmux`) for tiling window managers, Waybar JSON output (`--waybar`), and a background daemon.
+
+To build on FreeBSD:
+```sh
+cd freebsd
+go build -ldflags "-s -w" -o limitbar .
+```
+Or cross-compile from macOS/Linux:
+```bash
+cd freebsd && ./build.sh
+```
+See the [FreeBSD README](freebsd/README.md) for complete details and Polybar / Waybar / tmux configuration snippets.
 
 ---
 

@@ -137,11 +137,11 @@ See the [FreeBSD README](freebsd/README.md) for complete details and Polybar / W
 
 | Platform | Architecture | Package / Binary | SHA-256 Checksum |
 | :--- | :--- | :--- | :--- |
-| **macOS** | Universal (Apple Silicon & Intel) | `LimitBar-1.2.0.zip` | `4b4a43a707433912af411a9fbfaac5e7a9437b8e4c90c9fbca778ca2d3058d54` |
-| **Windows** | x86_64 (64-bit) | `LimitBar.exe` | `600b887a7570f2cef34ba2814cf080f17d876bfd56988ee14e6f56730f29848f` |
-| **Windows** | ARM64 | `LimitBar-arm64.exe` | `a3b33453074ffa6235947e741c6fb8b063af7de86a56f3c012483b7a98cd72b2` |
-| **FreeBSD** | amd64 (x86_64) | `limitbar-freebsd-amd64` | `f1080aaa62e269c3400c4746b2032cce6d7230554107002ab50113a5cbfe9c11` |
-| **FreeBSD** | arm64 (aarch64) | `limitbar-freebsd-arm64` | `8cc317568dfaf4913156c8586bc44a8bbfeca9a39fd38c199b19344a4978eaee` |
+| **macOS** | Universal (Apple Silicon & Intel) | `LimitBar-1.2.0.zip` | `df121b87b06a785f3bd07bc10aa13be97a4b174d39d6d91ffac1adf6167e93cc` |
+| **Windows** | x86_64 (64-bit) | `LimitBar.exe` | `84ab979ec726be1136c7d9cc0e93560a71548693b671659ca3897f1b7f7d6b7d` |
+| **Windows** | ARM64 | `LimitBar-arm64.exe` | `5f0d7736586a7fc0cfd4f14c003827617acc65831a847da8aa2fda9620e710ab` |
+| **FreeBSD** | amd64 (x86_64) | `limitbar-freebsd-amd64` | `b7b1e02a4cb84f7ba3a00f1b7d89342e95f9c0d7d311ec4ff0d2c20c52f4b4b8` |
+| **FreeBSD** | arm64 (aarch64) | `limitbar-freebsd-arm64` | `708eaf219edf816d145a0bef38a8560adc348019c61a73872d42740c0774c1bb` |
 
 All macOS builds are sealed with ad-hoc code signatures and verified with Sigstore build provenance attestation.
 
